@@ -139,18 +139,32 @@ public sealed class BtopPanel : Grid, IDisposable
     private readonly Dictionary<string, MetricCard> tiles = [];
     private readonly List<string> order = ["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"];
     private readonly Grid metrics = new() { ColumnSpacing = 8, RowSpacing = 8, Padding = new Thickness(10, 5, 10, 5) };
+    private readonly Grid metricsBody = new();
+    private readonly ScrollViewer metricsScroll = new()
+    {
+        VerticalScrollMode = ScrollMode.Auto,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        HorizontalScrollMode = ScrollMode.Disabled,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        HorizontalContentAlignment = HorizontalAlignment.Stretch
+    };
     private readonly Button columnsButton;
     private readonly Grid cpuThreadGrid = new() { Visibility = Visibility.Collapsed, ColumnSpacing = 6, RowSpacing = 2 };
     private readonly List<Sparkline> cpuThreadCharts = [];
     private readonly List<TextBlock> cpuThreadValues = [];
     private Button cpuModeButton = null!;
     private bool cpuThreads;
+    private bool metricLayoutPending;
     private double cpuTotalHeight = 92;
     private int columns;
+    private int renderedMetricColumns;
+
+    private const double MinimumAutoMetricWidth = 220;
+    private const int MaximumAutoMetricColumns = 3;
 
     public BtopPanel()
     {
-        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
         var toolbar = new Grid { Padding = new Thickness(10, 6, 10, 0) }; toolbar.ColumnDefinitions.Add(new ColumnDefinition()); toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         toolbar.Children.Add(Ui.SmallLabel("SYSTEM MONITOR", Ui.Brush("#FF27DDE5")));
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -159,10 +173,13 @@ public sealed class BtopPanel : Grid, IDisposable
         actions.Children.Add(Ui.IconButton("", "Reset monitor layout", ResetLayout)); Grid.SetColumn(actions, 1); toolbar.Children.Add(actions); Children.Add(toolbar);
         var definitions = new[] { ("CPU", Ui.RedBrush), ("MEMORY", Ui.Brush("#FFFFC928")), ("GPU", Ui.Brush("#FFB97AFF")), ("DISK", Ui.Brush("#FFFF3B91")), ("NETWORK", Ui.Brush("#FF36DDE8")), ("PROCESSES", Ui.Brush("#FF6EDF45")) };
         foreach (var definition in definitions) { var tile = Metric(definition.Item1, definition.Item2); tiles[definition.Item1] = tile; metrics.Children.Add(tile); }
-        Grid.SetRow(metrics, 1); Children.Add(metrics);
+        metricsBody.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        metricsBody.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        metricsBody.Children.Add(metrics);
         var processBorder = new Border { Background = Ui.Brush("#5A050609"), BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(10, 5, 10, 10), Child = processes };
-        Grid.SetRow(processBorder, 2); Children.Add(processBorder);
-        SizeChanged += (_, _) => { if (columns == 0) LayoutMetrics(); }; LayoutMetrics();
+        Grid.SetRow(processBorder, 1); metricsBody.Children.Add(processBorder);
+        metricsScroll.Content = metricsBody; Grid.SetRow(metricsScroll, 1); Children.Add(metricsScroll);
+        SizeChanged += (_, _) => ScheduleMetricLayout(); LayoutMetrics();
         timer.Tick += (_, _) => Refresh(); timer.Start(); Refresh();
     }
 
@@ -239,11 +256,37 @@ public sealed class BtopPanel : Grid, IDisposable
 
     private void LayoutMetrics()
     {
-        var count = columns == 0 ? ActualWidth >= 760 ? 3 : ActualWidth >= 480 ? 2 : 1 : columns;
+        var count = columns == 0 ? CalculateAutoColumns(AvailableMetricWidth()) : columns;
         count = Math.Clamp(count, 1, 4); metrics.ColumnDefinitions.Clear(); metrics.RowDefinitions.Clear();
         for (var i = 0; i < count; i++) metrics.ColumnDefinitions.Add(new ColumnDefinition());
         for (var i = 0; i < (int)Math.Ceiling(order.Count / (double)count); i++) metrics.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         for (var i = 0; i < order.Count; i++) { var tile = tiles[order[i]]; Grid.SetColumn(tile, i % count); Grid.SetRow(tile, i / count); }
+        renderedMetricColumns = count;
+    }
+
+    private void ScheduleMetricLayout()
+    {
+        if (columns != 0 || metricLayoutPending) return;
+        var requestedColumns = CalculateAutoColumns(AvailableMetricWidth());
+        if (requestedColumns == renderedMetricColumns) return;
+        metricLayoutPending = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            metricLayoutPending = false;
+            if (columns == 0 && CalculateAutoColumns(AvailableMetricWidth()) != renderedMetricColumns) LayoutMetrics();
+        });
+    }
+
+    private double AvailableMetricWidth()
+    {
+        var width = metricsScroll.ActualWidth > 0 ? metricsScroll.ActualWidth : ActualWidth;
+        return Math.Max(0, width - metrics.Padding.Left - metrics.Padding.Right);
+    }
+
+    private static int CalculateAutoColumns(double availableWidth)
+    {
+        var count = (int)Math.Floor((availableWidth + 8) / (MinimumAutoMetricWidth + 8));
+        return Math.Clamp(count, 1, MaximumAutoMetricColumns);
     }
 
     private void Move(string source, string target)
@@ -263,7 +306,11 @@ public sealed class BtopPanel : Grid, IDisposable
         App.Trace("Validating metric cards");
         if (tiles.Count != order.Count || tiles.Any(pair => pair.Value.Label != pair.Key)) throw new InvalidOperationException("Metric cards were not initialized correctly.");
         if (tiles.Values.Any(tile => tile.Progress is < 0 or > 100)) throw new InvalidOperationException("Metric progress is outside its valid range.");
+        App.Trace("Testing responsive metric breakpoints");
+        if (CalculateAutoColumns(300) != 1 || CalculateAutoColumns(520) != 2 || CalculateAutoColumns(900) != 3) throw new InvalidOperationException("Metric auto-column breakpoints are invalid.");
+        if (metricsScroll.VerticalScrollBarVisibility != ScrollBarVisibility.Auto || metricsScroll.HorizontalScrollMode != ScrollMode.Disabled) throw new InvalidOperationException("Metric scrolling is not configured correctly.");
         App.Trace("Testing metric layout"); columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics();
+        columns = 4; LayoutMetrics(); if (metrics.ColumnDefinitions.Count != 4) throw new InvalidOperationException("Manual metric columns were not preserved.");
         App.Trace("Testing CPU thread mode"); ToggleCpuMode(); ToggleCpuMode();
         App.Trace("Resetting metric layout"); ResetLayout();
     }

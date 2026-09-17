@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace RedTrace.Windows.Controls;
 
-public sealed class MetricCard : UserControl
+public sealed class MetricCard : Grid
 {
     public static readonly DependencyProperty LabelProperty = DependencyProperty.Register(
         nameof(Label), typeof(string), typeof(MetricCard), new PropertyMetadata(string.Empty, OnLabelChanged));
@@ -34,7 +34,10 @@ public sealed class MetricCard : UserControl
     private readonly TextBlock valueText = new();
     private readonly ContentPresenter trendContentPresenter = new();
     private readonly ContentPresenter headerContentPresenter = new();
-    private readonly ProgressBar progressIndicator = new() { Height = 3, MinHeight = 3, Maximum = 100, IsIndeterminate = false };
+    private readonly Grid progressTrack = new() { Height = 3, MinHeight = 3 };
+    private readonly Border progressFill = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ColumnDefinition progressColumn = new();
+    private readonly ColumnDefinition progressRemainder = new();
     private readonly Border resizeGrip = new() { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Colors.Transparent), CornerRadius = new CornerRadius(5) };
     private readonly TextBlock resizeGlyph = new() { Text = "◢", FontSize = 9, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 
@@ -126,14 +129,17 @@ public sealed class MetricCard : UserControl
         Grid.SetRow(data, 1);
         root.Children.Add(data);
 
-        Grid.SetRow(progressIndicator, 2);
-        root.Children.Add(progressIndicator);
+        progressTrack.ColumnDefinitions.Add(progressColumn);
+        progressTrack.ColumnDefinitions.Add(progressRemainder);
+        progressTrack.Children.Add(progressFill);
+        Grid.SetRow(progressTrack, 2);
+        root.Children.Add(progressTrack);
         resizeGrip.Child = resizeGlyph;
         Grid.SetRow(resizeGrip, 1);
         root.Children.Add(resizeGrip);
 
         cardBorder.Child = root;
-        Content = cardBorder;
+        Children.Add(cardBorder);
     }
 
     private void ApplySharedResources()
@@ -150,7 +156,7 @@ public sealed class MetricCard : UserControl
         labelText.VerticalAlignment = VerticalAlignment.Center;
         valueText.FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono"));
         valueText.Foreground = Ui.WhiteBrush;
-        progressIndicator.Background = Ui.HairlineBrush;
+        progressTrack.Background = Ui.HairlineBrush;
     }
 
     private static void OnLabelChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
@@ -182,12 +188,17 @@ public sealed class MetricCard : UserControl
     {
         cardBorder.BorderBrush = brush;
         labelText.Foreground = brush;
-        progressIndicator.Foreground = brush;
+        progressFill.Background = brush;
         resizeGlyph.Foreground = brush;
     }
 
-    private void ApplyProgress(double value) => progressIndicator.Value = Math.Clamp(value, 0, 100);
+    private void ApplyProgress(double value)
+    {
+        value = Math.Clamp(value, 0, 100);
+        progressColumn.Width = new GridLength(value, GridUnitType.Star);
+        progressRemainder.Width = new GridLength(100 - value, GridUnitType.Star);
+    }
 
     private void ApplyProgressVisibility(bool visible) =>
-        progressIndicator.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        progressTrack.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 }

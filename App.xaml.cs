@@ -30,7 +30,7 @@ public partial class App : Application
             mainWindow = new MainWindow();
             mainWindow.Activate();
             try { CreateTray(); } catch (Exception trayError) { WriteCrashLog(trayError, "Tray setup"); }
-            if (args.Arguments.Contains("--smoke-test", StringComparison.OrdinalIgnoreCase)) StartSmokeTest();
+            if (Environment.GetCommandLineArgs().Any(value => string.Equals(value, "--smoke-test", StringComparison.OrdinalIgnoreCase))) StartSmokeTest();
         }
         catch (Exception error)
         {

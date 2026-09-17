@@ -30,6 +30,7 @@ jobs:
           $process = Start-Process '.\publish\RedTrace.exe' -ArgumentList '--smoke-test' -PassThru
           if (-not $process.WaitForExit(20000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $log) { Get-Content $log }
             throw 'RedTrace smoke test timed out.'
           }
           if ($process.ExitCode -ne 0) {

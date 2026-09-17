@@ -45,7 +45,7 @@ public static class Ui
 
     public static string Icon(PanelMode mode) => mode switch { PanelMode.Watch => "", PanelMode.Run => "", PanelMode.Codex => "", _ => "" };
 
-    internal static T Resource<T>(string key, T fallback) where T : class
+    internal static T Resource<T>(string key, T fallback)
     {
         try
         {

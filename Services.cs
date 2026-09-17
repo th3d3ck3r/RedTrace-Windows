@@ -129,14 +129,18 @@ public static class CommandCatalog
 public sealed class SystemSampler
 {
     [StructLayout(LayoutKind.Sequential)] private struct FileTime { public uint Low, High; public ulong Value => ((ulong)High << 32) | Low; }
+    [StructLayout(LayoutKind.Sequential)] private struct ProcessorTimes { public long Idle, Kernel, User, Dpc, Interrupt; public uint InterruptCount; }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)] private struct MemoryStatus { public uint Length; public uint Load; public ulong Total, Available, TotalPage, AvailablePage, TotalVirtual, AvailableVirtual, AvailableExtended; }
     [DllImport("kernel32.dll")] private static extern bool GetSystemTimes(out FileTime idle, out FileTime kernel, out FileTime user);
     [DllImport("kernel32.dll", CharSet = CharSet.Auto)] private static extern bool GlobalMemoryStatusEx(ref MemoryStatus status);
+    [DllImport("ntdll.dll")] private static extern int NtQuerySystemInformation(int infoClass, IntPtr info, int length, out int returned);
     private ulong oldIdle, oldKernel, oldUser, oldNetwork;
+    private ProcessorTimes[]? oldProcessorTimes;
     private DateTime oldTime = DateTime.UtcNow;
     private readonly ConcurrentDictionary<int, TimeSpan> processTimes = new();
     private int gpuTick;
     public double Cpu { get; private set; }
+    public IReadOnlyList<double> CpuThreads { get; private set; } = [];
     public double Memory { get; private set; }
     public double NetworkBytesPerSecond { get; private set; }
     public string Network { get; private set; } = "—";
@@ -153,6 +157,7 @@ public sealed class SystemSampler
             if (oldKernel != 0 && total > 0) Cpu = Math.Clamp(100.0 * (total - idleDelta) / total, 0, 100);
             oldIdle = idle.Value; oldKernel = kernel.Value; oldUser = user.Value;
         }
+        SampleCpuThreads();
         var memory = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         if (GlobalMemoryStatusEx(ref memory)) Memory = memory.Load;
         var drive = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.Name.StartsWith(Path.GetPathRoot(Environment.SystemDirectory)!));
@@ -172,6 +177,25 @@ public sealed class SystemSampler
         ProcessCount = samples.Count;
         Processes = samples.OrderByDescending(x => x.Item3).Take(12).ToArray();
         if (++gpuTick % 5 == 1) _ = SampleGpu();
+    }
+
+    private void SampleCpuThreads()
+    {
+        var count = Environment.ProcessorCount; var size = Marshal.SizeOf<ProcessorTimes>(); var memory = Marshal.AllocHGlobal(size * count);
+        try
+        {
+            if (NtQuerySystemInformation(8, memory, size * count, out var returned) != 0) return;
+            count = Math.Min(count, returned / size); var current = new ProcessorTimes[count]; var usage = new double[count];
+            for (var i = 0; i < count; i++) current[i] = Marshal.PtrToStructure<ProcessorTimes>(memory + i * size);
+            if (oldProcessorTimes?.Length == count)
+                for (var i = 0; i < count; i++)
+                {
+                    var idle = current[i].Idle - oldProcessorTimes[i].Idle; var total = current[i].Kernel - oldProcessorTimes[i].Kernel + current[i].User - oldProcessorTimes[i].User;
+                    usage[i] = total > 0 ? Math.Clamp(100.0 * (total - idle) / total, 0, 100) : 0;
+                }
+            oldProcessorTimes = current; CpuThreads = usage;
+        }
+        finally { Marshal.FreeHGlobal(memory); }
     }
 
     private async Task SampleGpu()

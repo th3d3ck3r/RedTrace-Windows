@@ -44,6 +44,7 @@ public sealed class MainWindow : Window
     private PanelMode selectedTab = PanelMode.Watch;
 
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);
     [DllImport("user32.dll")] private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
     [DllImport("user32.dll")] private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value);
     [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint colorKey, byte alpha, uint flags);
@@ -54,6 +55,7 @@ public sealed class MainWindow : Window
         this.dedicated = dedicated;
         Title = dedicated is null ? "RedTrace" : $"RedTrace {dedicated}";
         hwnd = WindowNative.GetWindowHandle(this);
+        var roundedCorners = 2; _ = DwmSetWindowAttribute(hwnd, 33, ref roundedCorners, sizeof(int));
         appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(hwnd));
         appWindow.Resize(new SizeInt32(dedicated is null ? 1120 : dedicated == PanelMode.Btop ? 840 : 760, dedicated is null ? 720 : dedicated == PanelMode.Btop ? 580 : 480));
         var iconPath = Path.Combine(AppContext.BaseDirectory, "RedTrace.ico");
@@ -218,6 +220,8 @@ public sealed class MainWindow : Window
     private FlyoutBase CardsFlyout()
     {
         var flyout = new MenuFlyout();
+        flyout.Items.Add(new MenuFlyoutItem { Text = "VISIBLE PANELS", IsEnabled = false });
+        flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var mode in Enum.GetValues<PanelMode>())
         {
             var item = new MenuFlyoutItem { Text = $"{(visible.Contains(mode) ? "✓" : "  ")}  {mode.ToString().ToUpperInvariant()}", Tag = mode };
@@ -244,8 +248,10 @@ public sealed class MainWindow : Window
     private MenuFlyout CreateLayoutFlyout()
     {
         var flyout = new MenuFlyout();
+        flyout.Items.Add(new MenuFlyoutItem { Text = "CARD HEIGHT", IsEnabled = false });
         var fitted = new MenuFlyoutItem { Text = $"{(fit ? "✓" : "  ")}  Fit cards to window" }; fitted.Click += (_, _) => { fit = !fit; if (cards) ApplyLayout(); }; flyout.Items.Add(fitted);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(new MenuFlyoutItem { Text = "COLUMNS", IsEnabled = false });
         foreach (var value in new[] { 0, 1, 2, 3, 4 })
         {
             var label = value == 0 ? "AUTO" : value.ToString();
@@ -273,9 +279,11 @@ public sealed class MainWindow : Window
     private void ShowAppearanceMenu()
     {
         var flyout = new MenuFlyout();
+        flyout.Items.Add(new MenuFlyoutItem { Text = "COLORS", IsEnabled = false });
         var text = new MenuFlyoutItem { Text = "Text color…" }; text.Click += (_, _) => PickColor(Ui.TextBrush); flyout.Items.Add(text);
         var accent = new MenuFlyoutItem { Text = "Accent color…" }; accent.Click += (_, _) => PickColor(Ui.RedBrush); flyout.Items.Add(accent);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(new MenuFlyoutItem { Text = "WINDOW OPACITY", IsEnabled = false });
         foreach (var amount in new[] { 0.70, 0.85, 0.95, 1.0 })
         {
             var value = amount;

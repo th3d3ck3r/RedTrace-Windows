@@ -63,6 +63,8 @@ public sealed class RunnerPanel : Grid, IDisposable
     private MenuFlyout ShellFlyout()
     {
         var flyout = new MenuFlyout();
+        flyout.Items.Add(new MenuFlyoutItem { Text = "SHELL", IsEnabled = false });
+        flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var kind in Enum.GetValues<ShellKind>())
         {
             var item = new MenuFlyoutItem { Text = $"{(shell == kind ? "✓" : "  ")}  {ShellSession.DisplayName(kind)}", Tag = kind };
@@ -139,6 +141,12 @@ public sealed class BtopPanel : Grid, IDisposable
     private readonly List<string> order = ["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"];
     private readonly Grid metrics = new() { ColumnSpacing = 8, RowSpacing = 8, Padding = new Thickness(10, 5, 10, 5) };
     private readonly Button columnsButton;
+    private readonly Grid cpuThreadGrid = new() { Visibility = Visibility.Collapsed, ColumnSpacing = 6, RowSpacing = 2 };
+    private readonly List<Sparkline> cpuThreadCharts = [];
+    private readonly List<TextBlock> cpuThreadValues = [];
+    private Button cpuModeButton = null!;
+    private bool cpuThreads;
+    private double cpuTotalHeight = 82;
     private int columns;
 
     public BtopPanel()
@@ -162,10 +170,17 @@ public sealed class BtopPanel : Grid, IDisposable
     private Border Metric(string title, SolidColorBrush accent)
     {
         var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition());
-        var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         top.Children.Add(Ui.SmallLabel(title, accent));
-        var value = new TextBlock { Text = "—", Foreground = Ui.WhiteBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }; values[title] = value; Grid.SetColumn(value, 1); top.Children.Add(value); grid.Children.Add(top);
-        var chart = new Sparkline(accent) { Margin = new Thickness(0, 5, 0, 0) }; charts[title] = chart; Grid.SetRow(chart, 1); grid.Children.Add(chart);
+        if (title == "CPU")
+        {
+            cpuModeButton = new Button { Content = "TOTAL", Height = 22, Padding = new Thickness(7, 1, 7, 1), Margin = new Thickness(5, 0, 7, 0), Background = Ui.Brush("#40271118"), BorderBrush = accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Foreground = accent, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 8 };
+            cpuModeButton.Click += (_, _) => ToggleCpuMode(); Grid.SetColumn(cpuModeButton, 1); top.Children.Add(cpuModeButton);
+        }
+        var value = new TextBlock { Text = "—", Foreground = Ui.WhiteBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }; values[title] = value; Grid.SetColumn(value, 2); top.Children.Add(value); grid.Children.Add(top);
+        var chartHost = new Grid { Margin = new Thickness(0, 5, 0, 0) }; Grid.SetRow(chartHost, 1); grid.Children.Add(chartHost);
+        var chart = new Sparkline(accent); charts[title] = chart; chartHost.Children.Add(chart);
+        if (title == "CPU") chartHost.Children.Add(cpuThreadGrid);
         var handle = new Border { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Background = Ui.Brush("#30FFFFFF"), CornerRadius = new CornerRadius(5), Child = new TextBlock { Text = "◢", FontSize = 9, Foreground = accent, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
         grid.Children.Add(handle); Grid.SetRow(handle, 1);
         var tile = new Border { Height = 82, MinHeight = 64, Background = Ui.RaisedBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(100, accent.Color.R, accent.Color.G, accent.Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 7, 6, 5), Child = grid, CanDrag = true, AllowDrop = true };
@@ -179,9 +194,44 @@ public sealed class BtopPanel : Grid, IDisposable
         return tile;
     }
 
+    private void ToggleCpuMode()
+    {
+        cpuThreads = !cpuThreads; cpuModeButton.Content = cpuThreads ? "THREADS" : "TOTAL";
+        charts["CPU"].Visibility = cpuThreads ? Visibility.Collapsed : Visibility.Visible;
+        cpuThreadGrid.Visibility = cpuThreads ? Visibility.Visible : Visibility.Collapsed;
+        if (cpuThreads)
+        {
+            cpuTotalHeight = tiles["CPU"].ActualHeight > 0 ? tiles["CPU"].ActualHeight : tiles["CPU"].Height;
+            BuildCpuThreadCharts(sampler.CpuThreads.Count);
+            var count = Math.Max(1, sampler.CpuThreads.Count); var cols = count > 24 ? 4 : count > 12 ? 3 : count > 6 ? 2 : 1;
+            tiles["CPU"].Height = Math.Max(96, Math.Ceiling(count / (double)cols) * 18 + 47);
+        }
+        else tiles["CPU"].Height = Math.Max(64, cpuTotalHeight);
+    }
+
+    private void BuildCpuThreadCharts(int count)
+    {
+        if (count == cpuThreadCharts.Count) return;
+        cpuThreadGrid.Children.Clear(); cpuThreadGrid.ColumnDefinitions.Clear(); cpuThreadGrid.RowDefinitions.Clear(); cpuThreadCharts.Clear(); cpuThreadValues.Clear();
+        count = Math.Max(1, count); var columnCount = count > 24 ? 4 : count > 12 ? 3 : count > 6 ? 2 : 1;
+        for (var i = 0; i < columnCount; i++) cpuThreadGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        for (var i = 0; i < (int)Math.Ceiling(count / (double)columnCount); i++) cpuThreadGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(16) });
+        var colors = new[] { "#FFFF5362", "#FFFFC928", "#FFB97AFF", "#FF36DDE8", "#FF6EDF45", "#FFFF3B91" };
+        for (var i = 0; i < count; i++)
+        {
+            var row = new Grid { ColumnSpacing = 4 }; row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) }); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(27) });
+            var accent = Ui.Brush(colors[i % colors.Length]); row.Children.Add(new TextBlock { Text = $"T{i}", FontFamily = new FontFamily("Cascadia Mono"), FontSize = 7, Foreground = accent, VerticalAlignment = VerticalAlignment.Center });
+            var spark = new Sparkline(accent) { Height = 12 }; cpuThreadCharts.Add(spark); Grid.SetColumn(spark, 1); row.Children.Add(spark);
+            var value = new TextBlock { Text = "0%", FontFamily = new FontFamily("Cascadia Mono"), FontSize = 7, Foreground = Ui.MutedBrush, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }; cpuThreadValues.Add(value); Grid.SetColumn(value, 2); row.Children.Add(value);
+            Grid.SetColumn(row, i % columnCount); Grid.SetRow(row, i / columnCount); cpuThreadGrid.Children.Add(row);
+        }
+    }
+
     private MenuFlyout ColumnsFlyout()
     {
         var flyout = new MenuFlyout();
+        flyout.Items.Add(new MenuFlyoutItem { Text = "METRIC COLUMNS", IsEnabled = false });
+        flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var value in new[] { 0, 1, 2, 3, 4 })
         {
             var item = new MenuFlyoutItem { Text = $"{(columns == value ? "✓" : "  ")}  {(value == 0 ? "AUTO" : value.ToString())}", Tag = value };
@@ -212,12 +262,17 @@ public sealed class BtopPanel : Grid, IDisposable
         foreach (var tile in tiles.Values) tile.Height = 82; LayoutMetrics();
     }
 
-    internal void RunSmokeTest() { columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics(); ResetLayout(); }
+    internal void RunSmokeTest() { columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics(); ToggleCpuMode(); ToggleCpuMode(); ResetLayout(); }
     private void Refresh()
     {
         sampler.Sample();
         values["CPU"].Text = $"{sampler.Cpu:0}%"; values["MEMORY"].Text = $"{sampler.Memory:0}%"; values["GPU"].Text = sampler.Gpu; values["DISK"].Text = sampler.Disk; values["NETWORK"].Text = sampler.Network; values["PROCESSES"].Text = sampler.ProcessCount.ToString();
         charts["CPU"].Add(sampler.Cpu); charts["MEMORY"].Add(sampler.Memory); charts["GPU"].Add(Percent(sampler.Gpu)); charts["DISK"].Add(Percent(sampler.Disk)); charts["NETWORK"].Add(Math.Min(100, Math.Log10(1 + sampler.NetworkBytesPerSecond) / 7 * 100)); charts["PROCESSES"].Add(Math.Min(100, sampler.ProcessCount / 5.0));
+        if (cpuThreads)
+        {
+            BuildCpuThreadCharts(sampler.CpuThreads.Count);
+            for (var i = 0; i < Math.Min(cpuThreadCharts.Count, sampler.CpuThreads.Count); i++) { cpuThreadCharts[i].Add(sampler.CpuThreads[i]); cpuThreadValues[i].Text = $"{sampler.CpuThreads[i]:0}%"; }
+        }
         processes.Text = " PID    CPU   PROCESS\n" + string.Join("\n", sampler.Processes.Select(p => $"{p.Pid,6} {p.Cpu,6:0.0}%  {p.Name}"));
     }
     private static double Percent(string value) => double.TryParse(value.Trim().TrimEnd('%'), out var number) ? Math.Clamp(number, 0, 100) : 0;

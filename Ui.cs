@@ -91,7 +91,7 @@ public static class Ui
 
 public static class Preferences
 {
-    private static readonly string PathName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedTrace", "appearance.json");
+    private static readonly string PathName = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedTrace", "appearance.json");
     public static double Opacity { get; set; } = 0.85;
 
     public static void Load()
@@ -112,7 +112,7 @@ public static class Preferences
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PathName)!);
             File.WriteAllText(PathName, JsonSerializer.Serialize(new Appearance(Opacity, Hex(Ui.TextBrush.Color), Hex(Ui.RedBrush.Color))));
         }
         catch { }

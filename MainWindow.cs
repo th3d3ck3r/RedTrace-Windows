@@ -22,7 +22,11 @@ public sealed class MainWindow : Window
     internal IntPtr WindowHandle => hwnd;
     private readonly Grid root = new();
     private readonly Border contentHost = new();
+    private readonly Grid dashboard = new();
+    private readonly Grid cardGrid = new();
+    private readonly StackPanel tabBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(9, 7, 9, 6) };
     private readonly Dictionary<PanelMode, FrameworkElement> panels = [];
+    private readonly Dictionary<PanelMode, Border> panelCards = [];
     private readonly List<PanelMode> order = [PanelMode.Watch, PanelMode.Run, PanelMode.Codex, PanelMode.Btop];
     private readonly HashSet<PanelMode> visible = [PanelMode.Watch, PanelMode.Run, PanelMode.Codex, PanelMode.Btop];
     private readonly SystemSampler toolbarSampler = new();
@@ -60,9 +64,17 @@ public sealed class MainWindow : Window
         contentHost.Background = Ui.Brush("#74050609"); contentHost.BorderBrush = Ui.Brush("#46FF3B4D"); contentHost.BorderThickness = new Thickness(1); contentHost.CornerRadius = new CornerRadius(12); contentHost.Margin = new Thickness(10, 0, 10, 10);
         Grid.SetRow(contentHost, 1); root.Children.Add(contentHost);
 
-        if (dedicated is PanelMode only) panels[only] = CreatePanel(only);
-        else foreach (var mode in Enum.GetValues<PanelMode>()) panels[mode] = CreatePanel(mode);
-        Render();
+        if (dedicated is PanelMode only)
+        {
+            panels[only] = CreatePanel(only);
+            contentHost.Child = panels[only];
+        }
+        else
+        {
+            foreach (var mode in Enum.GetValues<PanelMode>()) panels[mode] = CreatePanel(mode);
+            BuildDashboard();
+            ApplyLayout();
+        }
         root.SizeChanged += (_, _) => ScheduleResponsiveCardRender();
         toolbarTimer.Tick += (_, _) => RefreshStats(); toolbarTimer.Start(); RefreshStats();
     }
@@ -91,34 +103,47 @@ public sealed class MainWindow : Window
 
     private void ToggleLayout()
     {
-        cards = !cards; layoutButton.Content = cards ? "▦  CARDS  ▾" : "▣  TABS"; layoutButton.Flyout = cards ? CardsFlyout() : null; Render();
+        cards = !cards; layoutButton.Content = cards ? "▦  CARDS  ▾" : "▣  TABS"; layoutButton.Flyout = cards ? CardsFlyout() : null; ApplyLayout();
     }
 
-    private void Render()
+    private void BuildDashboard()
     {
-        DetachAll();
-        if (dedicated is PanelMode only) { contentHost.Child = panels[only]; return; }
-        if (cards) RenderCards(); else RenderTabs();
+        dashboard.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dashboard.RowDefinitions.Add(new RowDefinition());
+        dashboard.Children.Add(tabBar);
+        cardGrid.ColumnSpacing = 10; cardGrid.RowSpacing = 10; cardGrid.Padding = new Thickness(10);
+        Grid.SetRow(cardGrid, 1); dashboard.Children.Add(cardGrid);
+        foreach (var mode in order)
+        {
+            var card = Card(mode, panels[mode]);
+            panelCards[mode] = card;
+            cardGrid.Children.Add(card);
+        }
+        contentHost.Child = dashboard;
     }
 
-    private void RenderCards()
+    private void ApplyLayout()
     {
-        DetachAll();
+        if (dedicated is not null) return;
         var active = order.Where(visible.Contains).ToArray();
-        if (active.Length == 0) { contentHost.Child = new TextBlock { Text = "No cards selected\nUse CARDS to restore a panel.", Foreground = Ui.MutedBrush, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }; return; }
+        if (active.Length == 0) { foreach (var card in panelCards.Values) card.Visibility = Visibility.Collapsed; return; }
+        if (!visible.Contains(selectedTab)) selectedTab = active[0];
+        tabBar.Visibility = cards ? Visibility.Collapsed : Visibility.Visible;
+        if (!cards) BuildTabBar(active);
+        cardGrid.ColumnDefinitions.Clear(); cardGrid.RowDefinitions.Clear();
         var width = Math.Max(400, contentHost.ActualWidth - 24);
-        var count = columns == 0 ? width >= 1650 ? 4 : width >= 1180 ? 3 : width >= 700 ? 2 : 1 : columns;
+        var count = cards ? (columns == 0 ? width >= 1650 ? 4 : width >= 1180 ? 3 : width >= 700 ? 2 : 1 : columns) : 1;
         count = Math.Min(count, active.Length);
-        if (columns == 0) renderedAutoColumns = count;
-        var rows = (int)Math.Ceiling(active.Length / (double)count);
-        var grid = new Grid { ColumnSpacing = 10, RowSpacing = 10, Padding = new Thickness(10) };
-        for (var i = 0; i < count; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
-        for (var i = 0; i < rows; i++) grid.RowDefinitions.Add(new RowDefinition { Height = fit ? new GridLength(1, GridUnitType.Star) : new GridLength(280) });
+        if (cards && columns == 0) renderedAutoColumns = count;
+        var rows = cards ? (int)Math.Ceiling(active.Length / (double)count) : 1;
+        for (var i = 0; i < count; i++) cardGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        for (var i = 0; i < rows; i++) cardGrid.RowDefinitions.Add(new RowDefinition { Height = cards && !fit ? new GridLength(280) : new GridLength(1, GridUnitType.Star) });
+        foreach (var pair in panelCards) pair.Value.Visibility = cards ? (visible.Contains(pair.Key) ? Visibility.Visible : Visibility.Collapsed) : (pair.Key == selectedTab ? Visibility.Visible : Visibility.Collapsed);
         for (var i = 0; i < active.Length; i++)
         {
-            var card = Card(active[i], panels[active[i]]); Grid.SetColumn(card, i % count); Grid.SetRow(card, i / count); grid.Children.Add(card);
+            var card = panelCards[active[i]];
+            Grid.SetColumn(card, cards ? i % count : 0); Grid.SetRow(card, cards ? i / count : 0);
         }
-        contentHost.Child = grid;
     }
 
     private void ScheduleResponsiveCardRender()
@@ -132,25 +157,13 @@ public sealed class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             cardRenderPending = false;
-            if (cards && dedicated is null && columns == 0) RenderCards();
+            if (cards && dedicated is null && columns == 0) ApplyLayout();
         });
     }
 
-    private void RenderTabs()
+    private void BuildTabBar(PanelMode[] active)
     {
-        DetachAll();
-        var active = order.Where(visible.Contains).ToArray();
-        if (active.Length == 0)
-        {
-            contentHost.Child = new TextBlock { Text = "No tabs selected", Foreground = Ui.MutedBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            return;
-        }
-        if (!visible.Contains(selectedTab)) selectedTab = active[0];
-
-        var host = new Grid();
-        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        host.RowDefinitions.Add(new RowDefinition());
-        var tabBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(9, 7, 9, 6) };
+        tabBar.Children.Clear();
         foreach (var mode in active)
         {
             var current = mode;
@@ -167,12 +180,9 @@ public sealed class MainWindow : Window
                 Foreground = activeTab ? Ui.Accent(current) : Ui.MutedBrush,
                 FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10
             };
-            button.Click += (_, _) => { if (selectedTab != current) { selectedTab = current; RenderTabs(); } };
+            button.Click += (_, _) => { if (selectedTab != current) { selectedTab = current; ApplyLayout(); } };
             tabBar.Children.Add(button);
         }
-        host.Children.Add(tabBar);
-        var panel = panels[selectedTab]; Grid.SetRow(panel, 1); host.Children.Add(panel);
-        contentHost.Child = host;
     }
 
     private Border Card(PanelMode mode, FrameworkElement panel)
@@ -192,7 +202,7 @@ public sealed class MainWindow : Window
         border.Drop += async (_, e) =>
         {
             var raw = await e.DataView.GetTextAsync();
-            if (Enum.TryParse<PanelMode>(raw, out var source) && source != mode) { var from = order.IndexOf(source); var to = order.IndexOf(mode); order.RemoveAt(from); order.Insert(to, source); RenderCards(); }
+            if (Enum.TryParse<PanelMode>(raw, out var source) && source != mode) { var from = order.IndexOf(source); var to = order.IndexOf(mode); order.RemoveAt(from); order.Insert(to, source); ApplyLayout(); }
         };
         return border;
     }
@@ -203,11 +213,11 @@ public sealed class MainWindow : Window
         foreach (var mode in Enum.GetValues<PanelMode>())
         {
             var item = new ToggleMenuFlyoutItem { Text = mode.ToString().ToUpperInvariant(), IsChecked = visible.Contains(mode), Tag = mode };
-            item.Click += (_, _) => { var value = (PanelMode)item.Tag; if (item.IsChecked) visible.Add(value); else visible.Remove(value); RenderCards(); layoutButton.Flyout = CardsFlyout(); };
+            item.Click += (_, _) => { var value = (PanelMode)item.Tag; if (item.IsChecked) visible.Add(value); else visible.Remove(value); ApplyLayout(); layoutButton.Flyout = CardsFlyout(); };
             flyout.Items.Add(item);
         }
         flyout.Items.Add(new MenuFlyoutSeparator());
-        var showAll = new MenuFlyoutItem { Text = "Show all cards" }; showAll.Click += (_, _) => { foreach (var mode in Enum.GetValues<PanelMode>()) visible.Add(mode); RenderCards(); layoutButton.Flyout = CardsFlyout(); }; flyout.Items.Add(showAll);
+        var showAll = new MenuFlyoutItem { Text = "Show all cards" }; showAll.Click += (_, _) => { foreach (var mode in Enum.GetValues<PanelMode>()) visible.Add(mode); ApplyLayout(); layoutButton.Flyout = CardsFlyout(); }; flyout.Items.Add(showAll);
         return flyout;
     }
 
@@ -221,8 +231,8 @@ public sealed class MainWindow : Window
     private void ShowLayoutMenu()
     {
         var flyout = new MenuFlyout();
-        var fitted = new ToggleMenuFlyoutItem { Text = "Fit cards to window", IsChecked = fit }; fitted.Click += (_, _) => { fit = fitted.IsChecked; if (cards) RenderCards(); }; flyout.Items.Add(fitted);
-        foreach (var value in new[] { 0, 1, 2, 3, 4 }) { var item = new RadioMenuFlyoutItem { Text = value == 0 ? "Columns: AUTO" : $"Columns: {value}", GroupName = "columns", IsChecked = columns == value, Tag = value }; item.Click += (_, _) => { columns = (int)item.Tag; if (cards) RenderCards(); }; flyout.Items.Add(item); }
+        var fitted = new ToggleMenuFlyoutItem { Text = "Fit cards to window", IsChecked = fit }; fitted.Click += (_, _) => { fit = fitted.IsChecked; if (cards) ApplyLayout(); }; flyout.Items.Add(fitted);
+        foreach (var value in new[] { 0, 1, 2, 3, 4 }) { var item = new RadioMenuFlyoutItem { Text = value == 0 ? "Columns: AUTO" : $"Columns: {value}", GroupName = "columns", IsChecked = columns == value, Tag = value }; item.Click += (_, _) => { columns = (int)item.Tag; if (cards) ApplyLayout(); }; flyout.Items.Add(item); }
         flyout.ShowAt(root);
     }
 
@@ -231,26 +241,14 @@ public sealed class MainWindow : Window
         topmost = !topmost; if (appWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = topmost;
     }
 
-    private void DetachAll()
-    {
-        contentHost.Child = null;
-        foreach (var panel in panels.Values) Detach(panel);
-    }
-
     internal void RunSmokeTest()
     {
         if (dedicated is not null) return;
-        if (cards) ToggleLayout();
-        selectedTab = PanelMode.Run; RenderTabs();
-        selectedTab = PanelMode.Btop; RenderTabs();
-        ToggleLayout();
-    }
-
-    private static void Detach(FrameworkElement element)
-    {
-        if (element.Parent is Border border) border.Child = null;
-        else if (element.Parent is ContentControl content) content.Content = null;
-        else if (element.Parent is Panel parent) parent.Children.Remove(element);
+        App.Trace("Switching Cards to Tabs"); if (cards) ToggleLayout();
+        App.Trace("Selecting Runner tab"); selectedTab = PanelMode.Run; ApplyLayout();
+        App.Trace("Selecting BTOP tab"); selectedTab = PanelMode.Btop; ApplyLayout();
+        App.Trace("Switching Tabs to Cards"); ToggleLayout();
+        App.Trace("Layout switching completed");
     }
 
     private static FrameworkElement CreatePanel(PanelMode mode) => mode switch { PanelMode.Watch => new WatchPanel(), PanelMode.Run => new RunnerPanel(), PanelMode.Codex => new CodexPanel(), _ => new BtopPanel() };

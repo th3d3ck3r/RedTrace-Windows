@@ -34,6 +34,9 @@ jobs:
           }
           if ($process.ExitCode -ne 0) {
             if (Test-Path $log) { Get-Content $log }
+            Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-3)} -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'RedTrace|Microsoft.UI.Xaml' } |
+              Select-Object -First 5 -ExpandProperty Message
             throw "RedTrace smoke test failed with exit code $($process.ExitCode)."
           }
       - uses: actions/upload-artifact@v4

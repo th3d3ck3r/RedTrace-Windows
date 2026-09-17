@@ -42,12 +42,13 @@ public partial class App : Application
 
     private void StartSmokeTest()
     {
+        Trace("Smoke test started");
         var step = 0;
         smokeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         smokeTimer.Tick += (_, _) =>
         {
             if (step++ == 0) mainWindow!.RunSmokeTest();
-            else Quit();
+            else { Trace("Smoke test passed"); Quit(); }
         };
         smokeTimer.Start();
     }
@@ -81,6 +82,16 @@ public partial class App : Application
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
             File.AppendAllText(LogPath, $"[{DateTimeOffset.Now:O}] {area}\n{error}\n\n");
+        }
+        catch { }
+    }
+
+    internal static void Trace(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+            File.AppendAllText(LogPath, $"[{DateTimeOffset.Now:O}] {message}\n");
         }
         catch { }
     }

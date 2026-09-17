@@ -138,16 +138,16 @@ public sealed class MetricCard : UserControl
 
     private void ApplySharedResources()
     {
-        if (Ui.StyleResource("RedTraceMetricCardStyle") is Style cardStyle) cardBorder.Style = cardStyle;
-        else
-        {
-            cardBorder.Background = Ui.RaisedBrush;
-            cardBorder.BorderBrush = Ui.RedBrush;
-            cardBorder.BorderThickness = new Thickness(1);
-            cardBorder.CornerRadius = new CornerRadius(9);
-            cardBorder.Padding = new Thickness(10, 8, 10, 8);
-        }
-        if (Ui.StyleResource("RedTraceLabelStyle") is Style labelStyle) labelText.Style = labelStyle;
+        cardBorder.Background = Ui.RaisedBrush;
+        cardBorder.BorderBrush = Ui.RedBrush;
+        cardBorder.BorderThickness = new Thickness(1);
+        cardBorder.CornerRadius = Ui.Resource("RedTraceCardCornerRadius", new CornerRadius(9));
+        cardBorder.Padding = Ui.Resource("RedTraceCardPadding", new Thickness(10, 8, 10, 8));
+        labelText.FontFamily = Ui.Resource("RedTraceSansFontFamily", new FontFamily("Segoe UI Variable Display"));
+        labelText.FontSize = 10;
+        labelText.FontWeight = FontWeights.SemiBold;
+        labelText.CharacterSpacing = 60;
+        labelText.VerticalAlignment = VerticalAlignment.Center;
         valueText.FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono"));
         valueText.Foreground = Ui.WhiteBrush;
         progressIndicator.Background = Ui.HairlineBrush;

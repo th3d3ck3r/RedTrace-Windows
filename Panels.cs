@@ -260,9 +260,12 @@ public sealed class BtopPanel : Grid, IDisposable
 
     internal void RunSmokeTest()
     {
+        App.Trace("Validating metric cards");
         if (tiles.Count != order.Count || tiles.Any(pair => pair.Value.Label != pair.Key)) throw new InvalidOperationException("Metric cards were not initialized correctly.");
         if (tiles.Values.Any(tile => tile.Progress is < 0 or > 100)) throw new InvalidOperationException("Metric progress is outside its valid range.");
-        columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics(); ToggleCpuMode(); ToggleCpuMode(); ResetLayout();
+        App.Trace("Testing metric layout"); columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics();
+        App.Trace("Testing CPU thread mode"); ToggleCpuMode(); ToggleCpuMode();
+        App.Trace("Resetting metric layout"); ResetLayout();
     }
     private void Refresh()
     {

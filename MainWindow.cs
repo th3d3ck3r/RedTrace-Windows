@@ -34,6 +34,8 @@ public sealed class MainWindow : Window
     private bool fit = true;
     private bool closeForReal;
     private bool topmost = true;
+    private bool cardRenderPending;
+    private int renderedAutoColumns = -1;
 
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -60,7 +62,7 @@ public sealed class MainWindow : Window
         if (dedicated is PanelMode only) panels[only] = CreatePanel(only);
         else foreach (var mode in Enum.GetValues<PanelMode>()) panels[mode] = CreatePanel(mode);
         Render();
-        root.SizeChanged += (_, _) => { if (cards && dedicated is null) RenderCards(); };
+        root.SizeChanged += (_, _) => ScheduleResponsiveCardRender();
         toolbarTimer.Tick += (_, _) => RefreshStats(); toolbarTimer.Start(); RefreshStats();
     }
 
@@ -106,6 +108,7 @@ public sealed class MainWindow : Window
         var width = Math.Max(400, contentHost.ActualWidth - 24);
         var count = columns == 0 ? width >= 1650 ? 4 : width >= 1180 ? 3 : width >= 700 ? 2 : 1 : columns;
         count = Math.Min(count, active.Length);
+        if (columns == 0) renderedAutoColumns = count;
         var rows = (int)Math.Ceiling(active.Length / (double)count);
         var grid = new Grid { ColumnSpacing = 10, RowSpacing = 10, Padding = new Thickness(10) };
         for (var i = 0; i < count; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -115,6 +118,21 @@ public sealed class MainWindow : Window
             var card = Card(active[i], panels[active[i]]); Grid.SetColumn(card, i % count); Grid.SetRow(card, i / count); grid.Children.Add(card);
         }
         contentHost.Child = grid;
+    }
+
+    private void ScheduleResponsiveCardRender()
+    {
+        if (!cards || dedicated is not null || columns != 0 || cardRenderPending) return;
+        var width = Math.Max(400, contentHost.ActualWidth - 24);
+        var next = width >= 1650 ? 4 : width >= 1180 ? 3 : width >= 700 ? 2 : 1;
+        next = Math.Min(next, visible.Count);
+        if (next == renderedAutoColumns) return;
+        cardRenderPending = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            cardRenderPending = false;
+            if (cards && dedicated is null && columns == 0) RenderCards();
+        });
     }
 
     private void RenderTabs()

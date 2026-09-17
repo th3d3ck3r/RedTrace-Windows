@@ -11,7 +11,7 @@ public partial class App : Application
 
     public App()
     {
-        UnhandledException += (_, e) => { WriteCrashLog(e.Exception); e.Handled = true; };
+        UnhandledException += (_, e) => WriteCrashLog(e.Exception);
         InitializeComponent();
     }
 

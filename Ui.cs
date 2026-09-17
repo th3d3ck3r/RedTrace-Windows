@@ -45,7 +45,7 @@ public static class Ui
 
     public static string Icon(PanelMode mode) => mode switch { PanelMode.Watch => "", PanelMode.Run => "", PanelMode.Codex => "", _ => "" };
 
-    private static T Resource<T>(string key, T fallback) where T : class
+    internal static T Resource<T>(string key, T fallback) where T : class
     {
         try
         {
@@ -55,7 +55,7 @@ public static class Ui
         return fallback;
     }
 
-    private static Style? Style(string key)
+    internal static Style? StyleResource(string key)
     {
         try { return Application.Current?.Resources[key] as Style; }
         catch { return null; }
@@ -64,7 +64,7 @@ public static class Ui
     public static TextBox Terminal(bool readOnly = true)
     {
         var box = new TextBox { IsReadOnly = readOnly };
-        if (Style("RedTraceTerminalTextBoxStyle") is Style style) box.Style = style;
+        if (StyleResource("RedTraceTerminalTextBoxStyle") is Style style) box.Style = style;
         else
         {
             box.AcceptsReturn = true;
@@ -88,7 +88,7 @@ public static class Ui
             Content = new FontIcon { Glyph = glyph, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 13 },
             Foreground = accent ?? WhiteBrush
         };
-        if (Style("RedTraceIconButtonStyle") is Style style) button.Style = style;
+        if (StyleResource("RedTraceIconButtonStyle") is Style style) button.Style = style;
         else
         {
             button.Width = 31;
@@ -106,7 +106,7 @@ public static class Ui
 
     public static MenuFlyout Menu()
     {
-        var style = Style("RedTraceMenuFlyoutPresenterStyle") ?? new Style(typeof(MenuFlyoutPresenter));
+        var style = StyleResource("RedTraceMenuFlyoutPresenterStyle") ?? new Style(typeof(MenuFlyoutPresenter));
         if (style.Setters.Count == 0)
         {
             style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(11)));
@@ -121,7 +121,7 @@ public static class Ui
     public static TextBlock SmallLabel(string text, SolidColorBrush brush)
     {
         var label = new TextBlock { Text = text, Foreground = brush };
-        if (Style("RedTraceLabelStyle") is Style style) label.Style = style;
+        if (StyleResource("RedTraceLabelStyle") is Style style) label.Style = style;
         else
         {
             label.FontFamily = new FontFamily("Segoe UI Variable Display");

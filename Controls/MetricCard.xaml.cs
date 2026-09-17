@@ -30,6 +30,7 @@ public sealed partial class MetricCard : UserControl
     public MetricCard()
     {
         InitializeComponent();
+        ApplySharedResources();
         ApplyLabel(Label);
         ApplyDisplayValue(DisplayValue);
         ApplyAccent(AccentBrush ?? Ui.RedBrush);
@@ -82,6 +83,23 @@ public sealed partial class MetricCard : UserControl
     }
 
     public Border ResizeHandle => ResizeGrip;
+
+    private void ApplySharedResources()
+    {
+        if (Ui.StyleResource("RedTraceMetricCardStyle") is Style cardStyle) CardBorder.Style = cardStyle;
+        else
+        {
+            CardBorder.Background = Ui.RaisedBrush;
+            CardBorder.BorderBrush = Ui.RedBrush;
+            CardBorder.BorderThickness = new Thickness(1);
+            CardBorder.CornerRadius = new CornerRadius(9);
+            CardBorder.Padding = new Thickness(10, 8);
+        }
+        if (Ui.StyleResource("RedTraceLabelStyle") is Style labelStyle) LabelText.Style = labelStyle;
+        ValueText.FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono"));
+        ValueText.Foreground = Ui.WhiteBrush;
+        ProgressIndicator.Background = Ui.HairlineBrush;
+    }
 
     private static void OnLabelChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
         ((MetricCard)sender).ApplyLabel(args.NewValue as string ?? string.Empty);

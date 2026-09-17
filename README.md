@@ -2,6 +2,10 @@
 
 Native Windows 11 x64 companion to RedTrace for macOS. All activity remains local.
 
+## Visual parity update
+
+The Windows shell now closely follows the macOS Cards layout: a compact CARDS pill, 2×2 responsive dashboard, inset near-black panels, thin per-card accent colors, Fluent icon controls, integrated dark command inputs, six system-monitor tiles, and CPU/GPU/RAM status in the title bar. Windows-specific PowerShell, Command Prompt, and WSL behavior is unchanged.
+
 ## Included
 
 - Tabs and responsive movable/resizable Cards layouts for WATCH, RUN, CODEX, and BTOP

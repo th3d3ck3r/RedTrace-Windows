@@ -10,7 +10,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
@@ -37,6 +40,7 @@ public sealed class App : Application
     {
         base.OnStartup(e);
         Theme.Load();
+        Theme.ApplyResources();
         HookInstaller.Install(silent: true);
         main = new MainWindow();
         main.Closing += (_, ev) => { if (!exiting) { ev.Cancel = true; main.Hide(); } };
@@ -66,12 +70,103 @@ public static class Theme
     public static readonly Color Red = Color.FromRgb(255, 59, 77);
     public static readonly Brush RedBrush = new SolidColorBrush(Red);
     public static Brush Background = new SolidColorBrush(Color.FromRgb(5, 5, 7));
-    public static readonly Brush Panel = new SolidColorBrush(Color.FromRgb(12, 12, 16));
+    public static readonly Brush Panel = new SolidColorBrush(Color.FromRgb(10, 11, 15));
+    public static readonly Brush Raised = new SolidColorBrush(Color.FromRgb(17, 18, 24));
+    public static readonly Brush Hairline = new SolidColorBrush(Color.FromRgb(46, 48, 58));
     public static Brush Text = new SolidColorBrush(Color.FromRgb(255, 77, 90));
     public static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(150, 150, 158));
     public static string FontName = "Cascadia Mono";
     public static double FontSize = 12;
     public static double Opacity = .85;
+
+    public static void ApplyResources()
+    {
+        var dictionary = (ResourceDictionary)XamlReader.Parse("""
+            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <SolidColorBrush x:Key="ControlSurface" Color="#111218"/>
+              <SolidColorBrush x:Key="ControlHover" Color="#252732"/>
+              <SolidColorBrush x:Key="ControlStroke" Color="#353744"/>
+              <SolidColorBrush x:Key="RedTraceRed" Color="#FF3B4D"/>
+              <Style TargetType="{x:Type Button}">
+                <Setter Property="Foreground" Value="#E8E8ED"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="#353744"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                  <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                      <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="6" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                      </Border>
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter TargetName="Chrome" Property="Background" Value="#252732"/>
+                          <Setter TargetName="Chrome" Property="BorderBrush" Value="#80585D6C"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                          <Setter TargetName="Chrome" Property="Background" Value="#30323E"/>
+                        </Trigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </Setter.Value>
+                </Setter>
+              </Style>
+              <Style TargetType="{x:Type ComboBox}">
+                <Setter Property="Foreground" Value="#E8E8ED"/>
+                <Setter Property="Background" Value="#111218"/>
+                <Setter Property="BorderBrush" Value="#353744"/>
+                <Setter Property="Padding" Value="7,3"/>
+                <Setter Property="FontSize" Value="11"/>
+              </Style>
+              <Style TargetType="{x:Type ContextMenu}">
+                <Setter Property="Background" Value="#15161C"/>
+                <Setter Property="Foreground" Value="#E8E8ED"/>
+                <Setter Property="BorderBrush" Value="#3A3C48"/>
+              </Style>
+              <Style TargetType="{x:Type MenuItem}">
+                <Setter Property="Background" Value="#15161C"/>
+                <Setter Property="Foreground" Value="#E8E8ED"/>
+                <Setter Property="Padding" Value="8,5"/>
+              </Style>
+              <Style TargetType="{x:Type TabControl}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+              </Style>
+              <Style TargetType="{x:Type TabItem}">
+                <Setter Property="Foreground" Value="#94949E"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="Padding" Value="13,5"/>
+                <Setter Property="FontSize" Value="10"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Style.Triggers>
+                  <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Foreground" Value="#FF4D5A"/>
+                    <Setter Property="Background" Value="#201419"/>
+                    <Setter Property="BorderBrush" Value="#663B45"/>
+                  </Trigger>
+                </Style.Triggers>
+              </Style>
+              <Style TargetType="{x:Type ToolTip}">
+                <Setter Property="Background" Value="#202129"/>
+                <Setter Property="Foreground" Value="#F2F2F4"/>
+                <Setter Property="BorderBrush" Value="#3A3C48"/>
+              </Style>
+            </ResourceDictionary>
+            """);
+        Application.Current.Resources.MergedDictionaries.Add(dictionary);
+        Application.Current.Resources[SystemColors.WindowBrushKey] = Raised;
+        Application.Current.Resources[SystemColors.WindowTextBrushKey] = Brushes.White;
+        Application.Current.Resources[SystemColors.HighlightBrushKey] = new SolidColorBrush(Color.FromRgb(70, 26, 34));
+        Application.Current.Resources[SystemColors.HighlightTextBrushKey] = Brushes.White;
+    }
 
     public static void Load()
     {
@@ -194,7 +289,7 @@ public sealed class RunnerPanel : Grid, IDisposable
 {
     private readonly TextBox output = Ui.OutputBox();
     private readonly TextBox input = Ui.InputBox();
-    private readonly ComboBox shell = new() { Width = 120, Margin = new Thickness(4, 0, 4, 0) };
+    private readonly ComboBox shell = new() { Width = 112, Height = 27, Margin = new Thickness(0, 0, 6, 0) };
     private readonly List<string> history = [];
     private int historyIndex;
     private readonly ShellSession session;
@@ -204,17 +299,24 @@ public sealed class RunnerPanel : Grid, IDisposable
         RowDefinitions.Add(new RowDefinition());
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Children.Add(output);
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 5, 8, 7) };
+        output.Text = "Runner ready. Type a command below and press Enter.\n";
+        var bar = new Grid { Margin = new Thickness(8, 5, 8, 8) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bar.ColumnDefinitions.Add(new ColumnDefinition());
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Grid.SetRow(bar, 1);
         shell.ItemsSource = Enum.GetValues<ShellKind>(); shell.SelectedItem = ShellKind.PowerShell;
-        input.MinWidth = 160; input.HorizontalAlignment = HorizontalAlignment.Stretch;
-        bar.Children.Add(shell); bar.Children.Add(input);
-        bar.Children.Add(Ui.Button("⌘", "Common commands", CommonCommands));
-        bar.Children.Add(Ui.Button("↑", "Previous command", () => History(-1)));
-        bar.Children.Add(Ui.Button("↓", "Next command", () => History(1)));
-        bar.Children.Add(Ui.Button("⌫", "Clear output", output.Clear));
-        bar.Children.Add(Ui.Button("■", "Stop and restart", () => session.Start()));
-        bar.Children.Add(Ui.Button("↵", "Run", Run));
+        input.MinWidth = 120; input.HorizontalAlignment = HorizontalAlignment.Stretch; input.ToolTip = "Run a command…";
+        Grid.SetColumn(shell, 0); bar.Children.Add(shell);
+        Grid.SetColumn(input, 1); bar.Children.Add(input);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0) };
+        actions.Children.Add(Ui.IconButton("\uE712", "Common commands", CommonCommands));
+        actions.Children.Add(Ui.IconButton("\uE74A", "Previous command", () => History(-1)));
+        actions.Children.Add(Ui.IconButton("\uE74B", "Next command", () => History(1)));
+        actions.Children.Add(Ui.IconButton("\uE74D", "Clear output", output.Clear));
+        actions.Children.Add(Ui.IconButton("\uE71A", "Stop and restart", () => session.Start()));
+        actions.Children.Add(Ui.IconButton("\uE72A", "Run", Run, Theme.RedBrush));
+        Grid.SetColumn(actions, 2); bar.Children.Add(actions);
         Children.Add(bar);
         session = new ShellSession(ShellKind.PowerShell);
         session.Output += Append;
@@ -278,7 +380,7 @@ public static class CommandCatalog
 public sealed class WatchPanel : Grid, IDisposable
 {
     private readonly TextBox output = Ui.OutputBox();
-    private readonly ComboBox source = new() { Width = 160, Margin = new Thickness(8, 6, 8, 4) };
+    private readonly ComboBox source = new() { Width = 170, Height = 27, Margin = new Thickness(10, 7, 10, 3), HorizontalAlignment = HorizontalAlignment.Left };
     public WatchPanel()
     {
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
@@ -342,6 +444,7 @@ public sealed class SystemSampler
     public string Network { get; private set; } = "—";
     public string Disk { get; private set; } = "—";
     public string Gpu { get; private set; } = "—";
+    public int ProcessCount { get; private set; }
     public IReadOnlyList<(int Pid, string Name, double Cpu)> Processes { get; private set; } = [];
     private int gpuTick;
 
@@ -366,6 +469,7 @@ public sealed class SystemSampler
             catch { }
             finally { process.Dispose(); }
         }
+        ProcessCount = samples.Count;
         Processes = samples.OrderByDescending(x => x.Item3).Take(12).ToArray();
         if (++gpuTick % 5 == 1) _ = SampleGpu();
     }
@@ -387,19 +491,24 @@ public sealed class BtopPanel : Grid, IDisposable
 {
     private readonly SystemSampler sampler = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly TextBlock cpu = Ui.Metric(), gpu = Ui.Metric(), ram = Ui.Metric(), disk = Ui.Metric(), network = Ui.Metric();
+    private readonly TextBlock cpu = Ui.Metric(), gpu = Ui.Metric(), ram = Ui.Metric(), disk = Ui.Metric(), network = Ui.Metric(), processCount = Ui.Metric();
     private readonly TextBox processes = Ui.OutputBox();
     public BtopPanel()
     {
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
-        var metrics = new UniformGrid { Columns = 5, Margin = new Thickness(7) };
-        metrics.Children.Add(Ui.MetricCard("CPU", cpu, Theme.RedBrush)); metrics.Children.Add(Ui.MetricCard("GPU", gpu, Brushes.MediumPurple)); metrics.Children.Add(Ui.MetricCard("RAM", ram, Brushes.Orange)); metrics.Children.Add(Ui.MetricCard("DISK", disk, Brushes.DeepPink)); metrics.Children.Add(Ui.MetricCard("NETWORK", network, Brushes.Cyan));
+        var metrics = new UniformGrid { Columns = 3, Margin = new Thickness(7, 7, 7, 3) };
+        metrics.Children.Add(Ui.MetricCard("CPU", cpu, Theme.RedBrush));
+        metrics.Children.Add(Ui.MetricCard("MEMORY", ram, Brushes.Gold));
+        metrics.Children.Add(Ui.MetricCard("GPU", gpu, Brushes.MediumPurple));
+        metrics.Children.Add(Ui.MetricCard("DISK", disk, Brushes.DeepPink));
+        metrics.Children.Add(Ui.MetricCard("NETWORK", network, Brushes.Cyan));
+        metrics.Children.Add(Ui.MetricCard("PROCESSES", processCount, Brushes.LawnGreen));
         Children.Add(metrics); Grid.SetRow(processes, 1); Children.Add(processes);
         timer.Tick += (_, _) => Refresh(); timer.Start(); Refresh();
     }
     private void Refresh()
     {
-        sampler.Sample(); cpu.Text = $"{sampler.Cpu:0}%"; gpu.Text = sampler.Gpu; ram.Text = $"{sampler.Memory:0}%"; disk.Text = sampler.Disk; network.Text = sampler.Network;
+        sampler.Sample(); cpu.Text = $"{sampler.Cpu:0}%"; gpu.Text = sampler.Gpu; ram.Text = $"{sampler.Memory:0}%"; disk.Text = sampler.Disk; network.Text = sampler.Network; processCount.Text = sampler.ProcessCount.ToString();
         processes.Text = " PID    CPU   PROCESS\n" + string.Join("\n", sampler.Processes.Select(p => $"{p.Pid,6} {p.Cpu,6:0.0}%  {p.Name}"));
     }
     public void Dispose() => timer.Stop();
@@ -412,8 +521,13 @@ public sealed class MainWindow : Window
     private readonly Border content = new();
     private readonly Dictionary<RedMode, FrameworkElement> panels = [];
     private readonly List<RedMode> order = [RedMode.Watch, RedMode.Run, RedMode.Codex, RedMode.Btop];
+    private readonly HashSet<RedMode> visibleModes = [RedMode.Watch, RedMode.Run, RedMode.Codex, RedMode.Btop];
     private readonly Dictionary<RedMode, double> manualHeights = Enum.GetValues<RedMode>().ToDictionary(x => x, _ => 260.0);
-    private bool cards;
+    private readonly SystemSampler toolbarSampler = new();
+    private readonly DispatcherTimer toolbarTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly TextBlock toolbarStats = new();
+    private Button? modePill;
+    private bool cards = true;
     private int columns;
     private bool fit = true;
     private bool closeForReal;
@@ -422,31 +536,67 @@ public sealed class MainWindow : Window
     {
         this.dedicated = dedicated;
         Title = dedicated is null ? "RedTrace" : $"RedTrace {dedicated}";
-        Width = dedicated == RedMode.Btop ? 780 : 720; Height = dedicated == RedMode.Btop ? 520 : 440;
-        MinWidth = 430; MinHeight = 260; Background = Theme.Background; Foreground = Theme.Text; Opacity = Theme.Opacity; Topmost = true;
-        WindowStyle = WindowStyle.None; AllowsTransparency = true; ResizeMode = ResizeMode.CanResizeWithGrip;
-        root.LastChildFill = true; Content = root; BuildToolbar(); content.BorderBrush = new SolidColorBrush(Color.FromArgb(90, 255, 59, 77)); content.BorderThickness = new Thickness(1); content.CornerRadius = new CornerRadius(10); content.Margin = new Thickness(8, 0, 8, 8); root.Children.Add(content);
+        Width = dedicated is null ? 1120 : dedicated == RedMode.Btop ? 820 : 720; Height = dedicated is null ? 700 : dedicated == RedMode.Btop ? 560 : 460;
+        MinWidth = 620; MinHeight = 380; Background = Theme.Background; Foreground = Theme.Text; Opacity = Theme.Opacity; Topmost = true;
+        WindowStyle = WindowStyle.None; AllowsTransparency = false; ResizeMode = ResizeMode.CanResize;
+        WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 0, CornerRadius = new CornerRadius(11), GlassFrameThickness = new Thickness(0), ResizeBorderThickness = new Thickness(6), UseAeroCaptionButtons = false });
+        SourceInitialized += (_, _) => NativeWindowStyle.Apply(this);
+        root.LastChildFill = true; root.Background = Theme.Background; Content = root; BuildToolbar();
+        content.Background = Theme.Background; content.BorderBrush = new SolidColorBrush(Color.FromArgb(88, 255, 59, 77)); content.BorderThickness = new Thickness(1); content.CornerRadius = new CornerRadius(11); content.Margin = new Thickness(8, 0, 8, 8); content.ClipToBounds = true; root.Children.Add(content);
         if (dedicated is RedMode only) panels[only] = CreatePanel(only);
         else foreach (var mode in Enum.GetValues<RedMode>()) panels[mode] = CreatePanel(mode);
-        ShowLayout(); SizeChanged += (_, _) => { if (cards) ShowCards(); };
+        UpdateModePill(); ShowLayout(); SizeChanged += (_, _) => { if (cards) ShowCards(); };
+        toolbarTimer.Tick += (_, _) => RefreshToolbarStats(); toolbarTimer.Start(); RefreshToolbarStats();
         Closing += (_, e) => { if (!closeForReal && dedicated is null) { e.Cancel = true; Hide(); } else DisposePanels(); };
     }
 
     private void BuildToolbar()
     {
-        var bar = new DockPanel { Height = 34, Margin = new Thickness(10, 5, 10, 3), LastChildFill = true };
+        var bar = new Grid { Height = 38, Margin = new Thickness(10, 4, 8, 3), Background = Brushes.Transparent };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bar.ColumnDefinitions.Add(new ColumnDefinition());
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         DockPanel.SetDock(bar, Dock.Top); root.Children.Add(bar);
         bar.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
-        var left = new StackPanel { Orientation = Orientation.Horizontal };
-        bar.Children.Add(left);
-        left.Children.Add(Ui.Label(dedicated?.ToString().ToUpperInvariant() ?? "REDTRACE"));
-        if (dedicated is null) left.Children.Add(Ui.Button("▦", "Switch Tabs/Cards", () => { cards = !cards; ShowLayout(); }));
-        left.Children.Add(Ui.Button("⊕", "New window", NewWindowMenu));
-        left.Children.Add(Ui.Button("⌁", "Card layout", LayoutMenu));
-        left.Children.Add(Ui.Button("◉", "Appearance", Appearance));
-        left.Children.Add(Ui.Button("⌖", "Always on top", () => Topmost = !Topmost));
-        left.Children.Add(Ui.Button("—", "Minimize", () => WindowState = WindowState.Minimized));
-        left.Children.Add(Ui.Button("×", "Close", Close));
+        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(left, 0); bar.Children.Add(left);
+        if (dedicated is RedMode only)
+        {
+            left.Children.Add(Ui.ModePill(Ui.ModeIcon(only), only.ToString().ToUpperInvariant(), Ui.Accent(only)));
+        }
+        else
+        {
+            modePill = Ui.PillButton("\uECA5  TABS", "Switch visible cards", CardVisibilityMenu);
+            left.Children.Add(modePill);
+        }
+
+        toolbarStats.FontFamily = new FontFamily(Theme.FontName); toolbarStats.FontSize = 9;
+        toolbarStats.Foreground = Theme.Muted; toolbarStats.VerticalAlignment = VerticalAlignment.Center;
+        toolbarStats.HorizontalAlignment = HorizontalAlignment.Right; toolbarStats.Margin = new Thickness(10, 0, 8, 0);
+        Grid.SetColumn(toolbarStats, 1); bar.Children.Add(toolbarStats);
+
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(right, 2); bar.Children.Add(right);
+        if (dedicated is null) right.Children.Add(Ui.IconButton("\uE8A9", "Switch Tabs/Cards", () => { cards = !cards; UpdateModePill(); ShowLayout(); }));
+        right.Children.Add(Ui.IconButton("\uE710", "New window", NewWindowMenu));
+        right.Children.Add(Ui.IconButton("\uE8A9", "Card layout", LayoutMenu));
+        right.Children.Add(Ui.IconButton("\uE790", "Appearance", Appearance));
+        right.Children.Add(Ui.IconButton("\uE718", "Always on top", () => Topmost = !Topmost));
+        right.Children.Add(Ui.IconButton("\uE921", "Minimize", () => WindowState = WindowState.Minimized));
+        right.Children.Add(Ui.IconButton("\uE8BB", "Close", Close));
+    }
+
+    private void RefreshToolbarStats()
+    {
+        toolbarSampler.Sample();
+        toolbarStats.Text = $"CPU {toolbarSampler.Cpu:0}%   GPU {toolbarSampler.Gpu}   RAM {toolbarSampler.Memory:0}%";
+    }
+
+    private void UpdateModePill()
+    {
+        if (modePill is null) return;
+        modePill.Content = cards ? "\uECA5  CARDS  ▾" : "\uE8A9  TABS";
+        modePill.ToolTip = cards ? "Choose visible cards" : "Switch to Cards to choose visible cards";
     }
 
     private void ShowLayout()
@@ -458,29 +608,37 @@ public sealed class MainWindow : Window
     private void ShowTabs()
     {
         content.Child = null;
-        var tabs = new TabControl { Background = Theme.Background, BorderThickness = new Thickness(0), Foreground = Theme.Text };
-        foreach (var mode in order) { Detach(panels[mode]); tabs.Items.Add(new TabItem { Header = mode.ToString().ToUpperInvariant(), Content = panels[mode], Foreground = Theme.Text, Background = Theme.Panel }); }
+        var tabs = new TabControl { Background = Theme.Background, BorderThickness = new Thickness(0), Foreground = Theme.Text, Padding = new Thickness(5) };
+        foreach (var mode in order) { Detach(panels[mode]); tabs.Items.Add(new TabItem { Header = $"{Ui.ModeIcon(mode)}  {mode.ToString().ToUpperInvariant()}", Content = panels[mode], Foreground = Theme.Text, Background = Theme.Panel }); }
         content.Child = tabs;
     }
 
     private void ShowCards()
     {
         content.Child = null;
-        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        var wrap = new WrapPanel { Margin = new Thickness(5) }; scroll.Content = wrap; content.Child = scroll;
+        var activeModes = order.Where(visibleModes.Contains).ToArray();
+        if (activeModes.Length == 0)
+        {
+            content.Child = new TextBlock { Text = "No cards selected\nClick CARDS to choose what to show.", TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Foreground = Theme.Muted, FontFamily = new FontFamily(Theme.FontName), LineHeight = 24 };
+            return;
+        }
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Theme.Background };
+        var wrap = new WrapPanel { Margin = new Thickness(5), Background = Theme.Background }; scroll.Content = wrap; content.Child = scroll;
         var width = Math.Max(400, content.ActualWidth - 20); var height = Math.Max(220, content.ActualHeight - 20);
-        var count = columns == 0 ? Math.Clamp((int)(width / 350), 1, 4) : columns;
-        var rows = (int)Math.Ceiling(order.Count / (double)count); var cardWidth = width / count - 10; var cardHeight = fit ? Math.Max(180, height / rows - 10) : 260;
-        foreach (var mode in order) { Detach(panels[mode]); wrap.Children.Add(Card(mode, panels[mode], cardWidth, fit ? cardHeight : manualHeights[mode])); }
+        var count = columns == 0 ? width >= 1650 ? 4 : width >= 1200 ? 3 : width >= 720 ? 2 : 1 : columns;
+        count = Math.Min(count, activeModes.Length);
+        var rows = (int)Math.Ceiling(activeModes.Length / (double)count); var cardWidth = width / count - 10; var cardHeight = fit ? Math.Max(180, height / rows - 10) : 260;
+        foreach (var mode in activeModes) { Detach(panels[mode]); wrap.Children.Add(Card(mode, panels[mode], cardWidth, fit ? cardHeight : manualHeights[mode])); }
     }
 
     private Border Card(RedMode mode, FrameworkElement panel, double width, double height)
     {
-        var border = new Border { Width = width, Height = height, Margin = new Thickness(5), BorderThickness = new Thickness(1), BorderBrush = Ui.Accent(mode), CornerRadius = new CornerRadius(9), Background = Theme.Panel, AllowDrop = true };
+        var border = new Border { Width = width, Height = height, Margin = new Thickness(5), BorderThickness = new Thickness(1), BorderBrush = Ui.Accent(mode), CornerRadius = new CornerRadius(10), Background = Theme.Panel, AllowDrop = true, ClipToBounds = true };
         var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); border.Child = grid;
-        var header = new DockPanel { Height = 30, Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)) };
-        var title = Ui.Label(mode.ToString().ToUpperInvariant()); title.Margin = new Thickness(9, 0, 0, 0); header.Children.Add(title);
-        var drag = Ui.Label("☰"); drag.HorizontalAlignment = HorizontalAlignment.Right; drag.Cursor = Cursors.SizeAll; DockPanel.SetDock(drag, Dock.Right); header.Children.Add(drag);
+        var header = new DockPanel { Height = 31, Background = new SolidColorBrush(Color.FromRgb(14, 15, 20)), LastChildFill = true };
+        var drag = Ui.Glyph("\uE700", Ui.Accent(mode)); drag.Margin = new Thickness(7, 0, 7, 0); drag.Cursor = Cursors.SizeAll; DockPanel.SetDock(drag, Dock.Right); header.Children.Add(drag);
+        var detach = Ui.IconButton("\uE8A7", $"Open dedicated {mode} window", () => new MainWindow(mode).Show(), Ui.Accent(mode)); detach.Margin = new Thickness(2, 3, 0, 3); DockPanel.SetDock(detach, Dock.Right); header.Children.Add(detach);
+        var title = Ui.ModePill(Ui.ModeIcon(mode), mode.ToString().ToUpperInvariant(), Ui.Accent(mode), compact: true); title.Margin = new Thickness(7, 0, 0, 0); header.Children.Add(title);
         drag.MouseMove += (_, e) => { if (e.LeftButton == MouseButtonState.Pressed) DragDrop.DoDragDrop(drag, mode, DragDropEffects.Move); };
         border.Drop += (_, e) => { if (e.Data.GetData(typeof(RedMode)) is RedMode source && source != mode) { var a = order.IndexOf(source); var b = order.IndexOf(mode); order.RemoveAt(a); order.Insert(b, source); ShowCards(); } };
         grid.Children.Add(header); Grid.SetRow(panel, 1); grid.Children.Add(panel);
@@ -513,6 +671,21 @@ public sealed class MainWindow : Window
         menu.IsOpen = true;
     }
 
+    private void CardVisibilityMenu()
+    {
+        if (!cards) { cards = true; UpdateModePill(); ShowCards(); }
+        var menu = new ContextMenu();
+        foreach (var mode in Enum.GetValues<RedMode>())
+        {
+            var item = new MenuItem { Header = mode.ToString().ToUpperInvariant(), IsCheckable = true, IsChecked = visibleModes.Contains(mode), Tag = mode };
+            item.Click += (_, _) => { var value = (RedMode)item.Tag; if (item.IsChecked) visibleModes.Add(value); else visibleModes.Remove(value); ShowCards(); };
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        var all = new MenuItem { Header = "Show all cards" }; all.Click += (_, _) => { visibleModes.Clear(); foreach (var mode in Enum.GetValues<RedMode>()) visibleModes.Add(mode); ShowCards(); }; menu.Items.Add(all);
+        menu.IsOpen = true;
+    }
+
     private void Appearance()
     {
         var dialog = new Window { Title = "Appearance", Width = 340, Height = 330, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Theme.Panel, Foreground = Brushes.White, ResizeMode = ResizeMode.NoResize };
@@ -537,23 +710,63 @@ public sealed class MainWindow : Window
         using var picker = new Forms.ColorDialog { FullOpen = true };
         if (picker.ShowDialog() != Forms.DialogResult.OK) return;
         var color = Color.FromRgb(picker.Color.R, picker.Color.G, picker.Color.B);
-        if (background) { Theme.Background = new SolidColorBrush(color); Background = Theme.Background; }
+        if (background) { Theme.Background = new SolidColorBrush(color); Background = Theme.Background; root.Background = Theme.Background; content.Background = Theme.Background; }
         else { Theme.Text = new SolidColorBrush(color); Ui.ApplyTerminalColors(this); }
         Theme.Save();
     }
 
-    private void DisposePanels() { foreach (var panel in panels.Values.OfType<IDisposable>()) panel.Dispose(); }
+    private void DisposePanels() { toolbarTimer.Stop(); foreach (var panel in panels.Values.OfType<IDisposable>()) panel.Dispose(); }
     public void CloseForReal() { closeForReal = true; Close(); }
+}
+
+public static class NativeWindowStyle
+{
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+
+    public static void Apply(Window window)
+    {
+        try
+        {
+            var handle = new WindowInteropHelper(window).Handle;
+            var enabled = 1; DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int));
+            var rounded = 2; DwmSetWindowAttribute(handle, 33, ref rounded, sizeof(int));
+            var backdrop = 2; DwmSetWindowAttribute(handle, 38, ref backdrop, sizeof(int));
+        }
+        catch { }
+    }
 }
 
 public static class Ui
 {
-    public static TextBox OutputBox() => new() { IsReadOnly = true, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Background = Brushes.Transparent, Foreground = Theme.Text, BorderThickness = new Thickness(0), FontFamily = new FontFamily(Theme.FontName), FontSize = Theme.FontSize, Padding = new Thickness(12, 10, 12, 10) };
-    public static TextBox InputBox() => new() { Background = Brushes.Transparent, Foreground = Theme.Text, CaretBrush = Theme.RedBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 59, 77)), FontFamily = new FontFamily(Theme.FontName), FontSize = Theme.FontSize, Padding = new Thickness(7, 4, 7, 4) };
-    public static Button Button(string text, string tip, Action action) { var b = new Button { Content = text, ToolTip = tip, Margin = new Thickness(3, 0, 3, 0), Padding = new Thickness(7, 3, 7, 3), Background = Brushes.Transparent, Foreground = Theme.RedBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 59, 77)) }; b.Click += (_, _) => action(); return b; }
+    public static TextBox OutputBox() => new() { IsReadOnly = true, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Background = Brushes.Transparent, Foreground = Theme.Text, SelectionBrush = new SolidColorBrush(Color.FromRgb(76, 28, 36)), BorderThickness = new Thickness(0), FontFamily = new FontFamily(Theme.FontName), FontSize = Theme.FontSize, Padding = new Thickness(12, 10, 12, 10) };
+    public static TextBox InputBox() => new() { Height = 27, Background = Theme.Raised, Foreground = Theme.Text, CaretBrush = Theme.RedBrush, BorderBrush = Theme.Hairline, BorderThickness = new Thickness(1), FontFamily = new FontFamily(Theme.FontName), FontSize = Theme.FontSize, Padding = new Thickness(8, 4, 8, 4), VerticalContentAlignment = VerticalAlignment.Center };
+    public static Button Button(string text, string tip, Action action) { var b = new Button { Content = text, ToolTip = tip, Margin = new Thickness(2, 0, 2, 0), Padding = new Thickness(8, 4, 8, 4), Background = Brushes.Transparent, Foreground = Theme.RedBrush, BorderBrush = Theme.Hairline }; b.Click += (_, _) => action(); return b; }
+    public static Button IconButton(string glyph, string tip, Action action, Brush? accent = null)
+    {
+        var b = Button(glyph, tip, action); b.Width = 28; b.Height = 27; b.Padding = new Thickness(0); b.Margin = new Thickness(2, 0, 2, 0); b.BorderBrush = Brushes.Transparent; b.Foreground = accent ?? new SolidColorBrush(Color.FromRgb(188, 189, 198)); b.FontFamily = new FontFamily("Segoe Fluent Icons"); b.FontSize = 12; return b;
+    }
+    public static Button PillButton(string text, string tip, Action action)
+    {
+        var b = Button(text, tip, action); b.Height = 26; b.Padding = new Thickness(10, 3, 10, 3); b.Margin = new Thickness(0, 0, 4, 0); b.Foreground = Theme.RedBrush; b.Background = new SolidColorBrush(Color.FromRgb(31, 18, 22)); b.BorderBrush = new SolidColorBrush(Color.FromRgb(91, 35, 44)); b.FontFamily = new FontFamily(Theme.FontName); b.FontWeight = FontWeights.SemiBold; b.FontSize = 10; return b;
+    }
+    public static TextBlock Glyph(string value, Brush? color = null) => new() { Text = value, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 11, Foreground = color ?? Theme.RedBrush, VerticalAlignment = VerticalAlignment.Center };
+    public static Border ModePill(string glyph, string text, Brush accent, bool compact = false)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(Glyph(glyph, accent));
+        row.Children.Add(new TextBlock { Text = text, FontFamily = new FontFamily(Theme.FontName), FontSize = compact ? 9 : 10, FontWeight = FontWeights.SemiBold, Foreground = accent, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        return new Border { Child = row, Background = Brushes.Transparent, Padding = compact ? new Thickness(0) : new Thickness(8, 4, 8, 4), CornerRadius = new CornerRadius(7), VerticalAlignment = VerticalAlignment.Center };
+    }
+    public static string ModeIcon(RedMode mode) => mode switch { RedMode.Watch => "\uE890", RedMode.Run => "\uE756", RedMode.Codex => "\uE943", _ => "\uE9D2" };
     public static TextBlock Label(string value) => new() { Text = value, Foreground = Theme.RedBrush, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-    public static TextBlock Metric() => new() { Foreground = Brushes.White, FontSize = 18, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold };
-    public static Border MetricCard(string title, TextBlock value, Brush accent) { var stack = new StackPanel(); stack.Children.Add(new TextBlock { Text = title, Foreground = accent, FontSize = 9 }); stack.Children.Add(value); return new Border { Child = stack, BorderBrush = accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Margin = new Thickness(4), Padding = new Thickness(8), Background = Theme.Panel }; }
+    public static TextBlock Metric() => new() { Foreground = Brushes.White, FontSize = 17, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 2, 0, 0) };
+    public static Border MetricCard(string title, TextBlock value, Brush accent)
+    {
+        var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(2) });
+        var stack = new StackPanel(); stack.Children.Add(new TextBlock { Text = title, Foreground = accent, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, FontSize = 8 }); stack.Children.Add(value); grid.Children.Add(stack);
+        var line = new Border { Height = 2, CornerRadius = new CornerRadius(1), Background = accent, Opacity = .85, Margin = new Thickness(0, 7, 0, 0) }; Grid.SetRow(line, 1); grid.Children.Add(line);
+        return new Border { Child = grid, BorderBrush = new SolidColorBrush(Color.FromArgb(105, ((SolidColorBrush)accent).Color.R, ((SolidColorBrush)accent).Color.G, ((SolidColorBrush)accent).Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(4), Padding = new Thickness(9, 7, 9, 7), Background = Theme.Raised };
+    }
     public static Brush Accent(RedMode mode) => mode switch { RedMode.Run => Brushes.Orange, RedMode.Codex => Brushes.DeepPink, RedMode.Btop => Brushes.Cyan, _ => Theme.RedBrush };
     public static string Rate(double bytes) => bytes > 1024 * 1024 ? $"{bytes / 1024 / 1024:0.0} MB/s" : bytes > 1024 ? $"{bytes / 1024:0} KB/s" : $"{bytes:0} B/s";
     public static void ApplyTypography(DependencyObject root) { for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) { var child = VisualTreeHelper.GetChild(root, i); if (child is Control c) { c.FontFamily = new FontFamily(Theme.FontName); c.FontSize = Theme.FontSize; } ApplyTypography(child); } }

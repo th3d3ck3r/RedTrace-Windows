@@ -1,10 +1,12 @@
+using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
 namespace RedTrace.Windows.Controls;
 
-public sealed partial class MetricCard : UserControl
+public sealed class MetricCard : UserControl
 {
     public static readonly DependencyProperty LabelProperty = DependencyProperty.Register(
         nameof(Label), typeof(string), typeof(MetricCard), new PropertyMetadata(string.Empty, OnLabelChanged));
@@ -27,17 +29,24 @@ public sealed partial class MetricCard : UserControl
     public static readonly DependencyProperty HeaderContentProperty = DependencyProperty.Register(
         nameof(HeaderContent), typeof(UIElement), typeof(MetricCard), new PropertyMetadata(null, OnHeaderContentChanged));
 
+    private readonly Border cardBorder = new();
+    private readonly TextBlock labelText = new();
+    private readonly TextBlock valueText = new();
+    private readonly ContentPresenter trendContentPresenter = new();
+    private readonly ContentPresenter headerContentPresenter = new();
+    private readonly ProgressBar progressIndicator = new() { Height = 3, MinHeight = 3, Maximum = 100, IsIndeterminate = false };
+    private readonly Border resizeGrip = new() { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Colors.Transparent), CornerRadius = new CornerRadius(5) };
+    private readonly TextBlock resizeGlyph = new() { Text = "◢", FontSize = 9, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+
     public MetricCard()
     {
-        InitializeComponent();
+        BuildVisualTree();
         ApplySharedResources();
         ApplyLabel(Label);
         ApplyDisplayValue(DisplayValue);
         ApplyAccent(AccentBrush ?? Ui.RedBrush);
         ApplyProgress(Progress);
         ApplyProgressVisibility(IsProgressVisible);
-        TrendContentPresenter.Content = TrendContent;
-        HeaderContentPresenter.Content = HeaderContent;
     }
 
     public string Label
@@ -82,23 +91,66 @@ public sealed partial class MetricCard : UserControl
         set => SetValue(HeaderContentProperty, value);
     }
 
-    public Border ResizeHandle => ResizeGrip;
+    public Border ResizeHandle => resizeGrip;
+
+    private void BuildVisualTree()
+    {
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition());
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = new Grid { ColumnSpacing = 6 };
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(labelText);
+        headerContentPresenter.HorizontalAlignment = HorizontalAlignment.Right;
+        headerContentPresenter.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(headerContentPresenter, 1);
+        header.Children.Add(headerContentPresenter);
+        root.Children.Add(header);
+
+        var data = new Grid { Margin = new Thickness(0, 3, 0, 4) };
+        data.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        data.RowDefinitions.Add(new RowDefinition());
+        valueText.FontSize = 23;
+        valueText.FontWeight = FontWeights.SemiBold;
+        valueText.IsTextSelectionEnabled = false;
+        valueText.TextTrimming = TextTrimming.CharacterEllipsis;
+        data.Children.Add(valueText);
+        trendContentPresenter.Margin = new Thickness(0, 3, 0, 0);
+        trendContentPresenter.HorizontalAlignment = HorizontalAlignment.Stretch;
+        trendContentPresenter.VerticalAlignment = VerticalAlignment.Stretch;
+        Grid.SetRow(trendContentPresenter, 1);
+        data.Children.Add(trendContentPresenter);
+        Grid.SetRow(data, 1);
+        root.Children.Add(data);
+
+        Grid.SetRow(progressIndicator, 2);
+        root.Children.Add(progressIndicator);
+        resizeGrip.Child = resizeGlyph;
+        Grid.SetRow(resizeGrip, 1);
+        root.Children.Add(resizeGrip);
+
+        cardBorder.Child = root;
+        Content = cardBorder;
+    }
 
     private void ApplySharedResources()
     {
-        if (Ui.StyleResource("RedTraceMetricCardStyle") is Style cardStyle) CardBorder.Style = cardStyle;
+        if (Ui.StyleResource("RedTraceMetricCardStyle") is Style cardStyle) cardBorder.Style = cardStyle;
         else
         {
-            CardBorder.Background = Ui.RaisedBrush;
-            CardBorder.BorderBrush = Ui.RedBrush;
-            CardBorder.BorderThickness = new Thickness(1);
-            CardBorder.CornerRadius = new CornerRadius(9);
-            CardBorder.Padding = new Thickness(10, 8, 10, 8);
+            cardBorder.Background = Ui.RaisedBrush;
+            cardBorder.BorderBrush = Ui.RedBrush;
+            cardBorder.BorderThickness = new Thickness(1);
+            cardBorder.CornerRadius = new CornerRadius(9);
+            cardBorder.Padding = new Thickness(10, 8, 10, 8);
         }
-        if (Ui.StyleResource("RedTraceLabelStyle") is Style labelStyle) LabelText.Style = labelStyle;
-        ValueText.FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono"));
-        ValueText.Foreground = Ui.WhiteBrush;
-        ProgressIndicator.Background = Ui.HairlineBrush;
+        if (Ui.StyleResource("RedTraceLabelStyle") is Style labelStyle) labelText.Style = labelStyle;
+        valueText.FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono"));
+        valueText.Foreground = Ui.WhiteBrush;
+        progressIndicator.Background = Ui.HairlineBrush;
     }
 
     private static void OnLabelChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
@@ -117,25 +169,25 @@ public sealed partial class MetricCard : UserControl
         ((MetricCard)sender).ApplyProgressVisibility(args.NewValue is true);
 
     private static void OnTrendContentChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
-        ((MetricCard)sender).TrendContentPresenter.Content = args.NewValue;
+        ((MetricCard)sender).trendContentPresenter.Content = args.NewValue;
 
     private static void OnHeaderContentChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
-        ((MetricCard)sender).HeaderContentPresenter.Content = args.NewValue;
+        ((MetricCard)sender).headerContentPresenter.Content = args.NewValue;
 
-    private void ApplyLabel(string value) => LabelText.Text = value.ToUpperInvariant();
+    private void ApplyLabel(string value) => labelText.Text = value.ToUpperInvariant();
 
-    private void ApplyDisplayValue(string value) => ValueText.Text = value;
+    private void ApplyDisplayValue(string value) => valueText.Text = value;
 
     private void ApplyAccent(SolidColorBrush brush)
     {
-        CardBorder.BorderBrush = brush;
-        LabelText.Foreground = brush;
-        ProgressIndicator.Foreground = brush;
-        ResizeGlyph.Foreground = brush;
+        cardBorder.BorderBrush = brush;
+        labelText.Foreground = brush;
+        progressIndicator.Foreground = brush;
+        resizeGlyph.Foreground = brush;
     }
 
-    private void ApplyProgress(double value) => ProgressIndicator.Value = Math.Clamp(value, 0, 100);
+    private void ApplyProgress(double value) => progressIndicator.Value = Math.Clamp(value, 0, 100);
 
     private void ApplyProgressVisibility(bool visible) =>
-        ProgressIndicator.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        progressIndicator.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 }

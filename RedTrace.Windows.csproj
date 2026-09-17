@@ -10,7 +10,11 @@
     <AssemblyName>RedTrace</AssemblyName>
     <RootNamespace>RedTrace.Windows</RootNamespace>
     <ApplicationIcon Condition="Exists('Assets\RedTrace.ico')">Assets\RedTrace.ico</ApplicationIcon>
-  </PropertyGroup>
+  </PropertyGroup> 
+  <ItemGroup>
+  <Using Remove="System.Windows.Forms" />
+  <Using Remove="System.Drawing" />
+</ItemGroup>
   <ItemGroup>
     <Content Include="codex-hook.ps1" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\RedTrace.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\RedTrace.ico')" />

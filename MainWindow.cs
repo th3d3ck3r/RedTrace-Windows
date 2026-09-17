@@ -48,7 +48,7 @@ public sealed class MainWindow : Window
         appWindow.Closing += OnClosing;
         if (appWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = true;
 
-        SystemBackdrop = new DesktopAcrylicBackdrop { Kind = DesktopAcrylicKind.Thin };
+        SystemBackdrop = new DesktopAcrylicBackdrop();
         ExtendsContentIntoTitleBar = true;
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(43) }); root.RowDefinitions.Add(new RowDefinition());
         root.Background = Ui.Brush("#70030407"); Content = root;

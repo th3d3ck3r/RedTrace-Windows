@@ -317,6 +317,7 @@ public sealed class MainWindow : Window
         App.Trace("Opening Layout menu"); var layoutFlyout = CreateLayoutFlyout(); layoutFlyout.ShowAt(root); layoutFlyout.Hide();
         App.Trace("Toggling always on top"); ToggleTopmost(); ToggleTopmost();
         App.Trace("Applying transparency"); ApplyWindowOpacity(0.85);
+        App.Trace("Testing BTOP layout"); if (panels[PanelMode.Btop] is BtopPanel btop) btop.RunSmokeTest();
         App.Trace("Layout switching completed");
     }
 

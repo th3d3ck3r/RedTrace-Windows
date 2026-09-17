@@ -4,6 +4,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
 
 namespace RedTrace.Windows;
@@ -134,28 +135,84 @@ public sealed class BtopPanel : Grid, IDisposable
     private readonly TextBlock processes = new() { FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, Foreground = Ui.TextBrush };
     private readonly Dictionary<string, TextBlock> values = [];
     private readonly Dictionary<string, Sparkline> charts = [];
+    private readonly Dictionary<string, Border> tiles = [];
+    private readonly List<string> order = ["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"];
+    private readonly Grid metrics = new() { ColumnSpacing = 8, RowSpacing = 8, Padding = new Thickness(10, 5, 10, 5) };
+    private readonly Button columnsButton;
+    private int columns;
+
     public BtopPanel()
     {
-        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
-        var metrics = new Grid { ColumnSpacing = 8, RowSpacing = 8, Padding = new Thickness(10, 10, 10, 5) };
-        for (var i = 0; i < 3; i++) metrics.ColumnDefinitions.Add(new ColumnDefinition());
-        for (var i = 0; i < 2; i++) metrics.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
+        var toolbar = new Grid { Padding = new Thickness(10, 6, 10, 0) }; toolbar.ColumnDefinitions.Add(new ColumnDefinition()); toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.Children.Add(Ui.SmallLabel("SYSTEM MONITOR", Ui.Brush("#FF27DDE5")));
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        columnsButton = new Button { Content = "AUTO  ▾", Height = 27, Padding = new Thickness(9, 2, 9, 2), Background = Ui.RaisedBrush, BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Foreground = Ui.WhiteBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 9 };
+        columnsButton.Flyout = ColumnsFlyout(); actions.Children.Add(columnsButton);
+        actions.Children.Add(Ui.IconButton("", "Reset monitor layout", ResetLayout)); Grid.SetColumn(actions, 1); toolbar.Children.Add(actions); Children.Add(toolbar);
         var definitions = new[] { ("CPU", Ui.RedBrush), ("MEMORY", Ui.Brush("#FFFFC928")), ("GPU", Ui.Brush("#FFB97AFF")), ("DISK", Ui.Brush("#FFFF3B91")), ("NETWORK", Ui.Brush("#FF36DDE8")), ("PROCESSES", Ui.Brush("#FF6EDF45")) };
-        for (var i = 0; i < definitions.Length; i++) { var tile = Metric(definitions[i].Item1, definitions[i].Item2); Grid.SetColumn(tile, i % 3); Grid.SetRow(tile, i / 3); metrics.Children.Add(tile); }
-        Children.Add(metrics);
+        foreach (var definition in definitions) { var tile = Metric(definition.Item1, definition.Item2); tiles[definition.Item1] = tile; metrics.Children.Add(tile); }
+        Grid.SetRow(metrics, 1); Children.Add(metrics);
         var processBorder = new Border { Background = Ui.Brush("#5A050609"), BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(10, 5, 10, 10), Child = processes };
-        Grid.SetRow(processBorder, 1); Children.Add(processBorder);
+        Grid.SetRow(processBorder, 2); Children.Add(processBorder);
+        SizeChanged += (_, _) => { if (columns == 0) LayoutMetrics(); }; LayoutMetrics();
         timer.Tick += (_, _) => Refresh(); timer.Start(); Refresh();
     }
+
     private Border Metric(string title, SolidColorBrush accent)
     {
-        var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition());
         var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         top.Children.Add(Ui.SmallLabel(title, accent));
         var value = new TextBlock { Text = "—", Foreground = Ui.WhiteBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }; values[title] = value; Grid.SetColumn(value, 1); top.Children.Add(value); grid.Children.Add(top);
         var chart = new Sparkline(accent) { Margin = new Thickness(0, 5, 0, 0) }; charts[title] = chart; Grid.SetRow(chart, 1); grid.Children.Add(chart);
-        return new Border { Background = Ui.RaisedBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(100, accent.Color.R, accent.Color.G, accent.Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 7, 10, 7), Child = grid };
+        var handle = new Border { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Background = Ui.Brush("#30FFFFFF"), CornerRadius = new CornerRadius(5), Child = new TextBlock { Text = "◢", FontSize = 9, Foreground = accent, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
+        grid.Children.Add(handle); Grid.SetRow(handle, 1);
+        var tile = new Border { Height = 82, MinHeight = 64, Background = Ui.RaisedBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(100, accent.Color.R, accent.Color.G, accent.Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 7, 6, 5), Child = grid, CanDrag = true, AllowDrop = true };
+        tile.DragStarting += (_, e) => { e.Data.SetText(title); e.Data.RequestedOperation = DataPackageOperation.Move; };
+        tile.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Move;
+        tile.Drop += async (_, e) => { var source = await e.DataView.GetTextAsync(); Move(source, title); };
+        var resizing = false; double startY = 0, startHeight = 0;
+        handle.PointerPressed += (_, e) => { resizing = true; startY = e.GetCurrentPoint(this).Position.Y; startHeight = tile.ActualHeight; handle.CapturePointer(e.Pointer); e.Handled = true; };
+        handle.PointerMoved += (_, e) => { if (!resizing) return; tile.Height = Math.Max(64, startHeight + e.GetCurrentPoint(this).Position.Y - startY); e.Handled = true; };
+        handle.PointerReleased += (_, e) => { resizing = false; handle.ReleasePointerCapture(e.Pointer); e.Handled = true; };
+        return tile;
     }
+
+    private MenuFlyout ColumnsFlyout()
+    {
+        var flyout = new MenuFlyout();
+        foreach (var value in new[] { 0, 1, 2, 3, 4 })
+        {
+            var item = new MenuFlyoutItem { Text = $"{(columns == value ? "✓" : "  ")}  {(value == 0 ? "AUTO" : value.ToString())}", Tag = value };
+            item.Click += (_, _) => { columns = (int)item.Tag; columnsButton.Content = columns == 0 ? "AUTO  ▾" : $"{columns} COL  ▾"; columnsButton.Flyout = ColumnsFlyout(); LayoutMetrics(); };
+            flyout.Items.Add(item);
+        }
+        return flyout;
+    }
+
+    private void LayoutMetrics()
+    {
+        var count = columns == 0 ? ActualWidth >= 760 ? 3 : ActualWidth >= 480 ? 2 : 1 : columns;
+        count = Math.Clamp(count, 1, 4); metrics.ColumnDefinitions.Clear(); metrics.RowDefinitions.Clear();
+        for (var i = 0; i < count; i++) metrics.ColumnDefinitions.Add(new ColumnDefinition());
+        for (var i = 0; i < (int)Math.Ceiling(order.Count / (double)count); i++) metrics.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var i = 0; i < order.Count; i++) { var tile = tiles[order[i]]; Grid.SetColumn(tile, i % count); Grid.SetRow(tile, i / count); }
+    }
+
+    private void Move(string source, string target)
+    {
+        if (source == target || !order.Contains(source) || !order.Contains(target)) return;
+        order.Remove(source); order.Insert(order.IndexOf(target), source); LayoutMetrics();
+    }
+
+    private void ResetLayout()
+    {
+        order.Clear(); order.AddRange(["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"]); columns = 0; columnsButton.Content = "AUTO  ▾"; columnsButton.Flyout = ColumnsFlyout();
+        foreach (var tile in tiles.Values) tile.Height = 82; LayoutMetrics();
+    }
+
+    internal void RunSmokeTest() { columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics(); ResetLayout(); }
     private void Refresh()
     {
         sampler.Sample();

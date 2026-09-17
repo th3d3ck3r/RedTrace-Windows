@@ -208,7 +208,7 @@ public sealed class BtopPanel : Grid, IDisposable
 
     private static Grid ProcessTableGrid(string pid, string cpu, string memory, string path, bool header)
     {
-        var row = new Grid { Padding = new Thickness(9, 0), ColumnSpacing = 8 };
+        var row = new Grid { Padding = new Thickness(9, 0, 9, 0), ColumnSpacing = 8 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });

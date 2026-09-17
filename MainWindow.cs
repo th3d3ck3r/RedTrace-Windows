@@ -24,9 +24,13 @@ public sealed class MainWindow : Window
     private readonly Border contentHost = new();
     private readonly Grid dashboard = new();
     private readonly Grid cardGrid = new();
+    private readonly ScrollViewer cardScroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
     private readonly StackPanel tabBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(9, 7, 9, 6) };
     private readonly Dictionary<PanelMode, FrameworkElement> panels = [];
     private readonly Dictionary<PanelMode, Border> panelCards = [];
+    private readonly Dictionary<PanelMode, Grid> cardHeaders = [];
+    private readonly Dictionary<PanelMode, Border> cardResizeHandles = [];
+    private readonly Dictionary<PanelMode, double> manualCardHeights = [];
     private readonly List<PanelMode> order = [PanelMode.Watch, PanelMode.Run, PanelMode.Codex, PanelMode.Btop];
     private readonly HashSet<PanelMode> visible = [PanelMode.Watch, PanelMode.Run, PanelMode.Codex, PanelMode.Btop];
     private readonly SystemSampler toolbarSampler = new();
@@ -41,6 +45,7 @@ public sealed class MainWindow : Window
     private bool topmost = true;
     private bool cardRenderPending;
     private int renderedAutoColumns = -1;
+    private double renderedHeight;
     private PanelMode selectedTab = PanelMode.Watch;
 
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
@@ -97,9 +102,9 @@ public sealed class MainWindow : Window
         stats.Foreground = Ui.MutedBrush; stats.FontFamily = new FontFamily("Cascadia Mono"); stats.FontSize = 9; stats.HorizontalAlignment = HorizontalAlignment.Right; stats.VerticalAlignment = VerticalAlignment.Center; stats.Margin = new Thickness(10, 0, 10, 0); Grid.SetColumn(stats, 1); bar.Children.Add(stats);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (dedicated is null) actions.Children.Add(Ui.IconButton("", "Switch Cards / Tabs", ToggleLayout));
-        actions.Children.Add(Ui.IconButton("", "New window", ShowNewWindowMenu));
-        actions.Children.Add(Ui.IconButton("", "Card layout", ShowLayoutMenu));
-        actions.Children.Add(Ui.IconButton("", "Appearance", ShowAppearanceMenu));
+        var newWindowButton = Ui.IconButton("", "New window", () => { }); newWindowButton.Flyout = CreateNewWindowFlyout(); actions.Children.Add(newWindowButton);
+        var layoutMenuButton = Ui.IconButton("", "Card layout", () => { }); layoutMenuButton.Flyout = CreateLayoutFlyout(); actions.Children.Add(layoutMenuButton);
+        var appearanceButton = Ui.IconButton("", "Appearance", () => { }); appearanceButton.Flyout = CreateAppearanceFlyout(); actions.Children.Add(appearanceButton);
         topmostButton = Ui.IconButton("", "Always on top", ToggleTopmost); actions.Children.Add(topmostButton);
         Grid.SetColumn(actions, 2); bar.Children.Add(actions);
         return bar;
@@ -122,7 +127,7 @@ public sealed class MainWindow : Window
         dashboard.RowDefinitions.Add(new RowDefinition());
         dashboard.Children.Add(tabBar);
         cardGrid.ColumnSpacing = 10; cardGrid.RowSpacing = 10; cardGrid.Padding = new Thickness(10);
-        Grid.SetRow(cardGrid, 1); dashboard.Children.Add(cardGrid);
+        cardScroll.Content = cardGrid; Grid.SetRow(cardScroll, 1); dashboard.Children.Add(cardScroll);
         foreach (var mode in order)
         {
             var card = Card(mode, panels[mode]);
@@ -139,6 +144,8 @@ public sealed class MainWindow : Window
         if (active.Length == 0) { foreach (var card in panelCards.Values) card.Visibility = Visibility.Collapsed; return; }
         if (!visible.Contains(selectedTab)) selectedTab = active[0];
         tabBar.Visibility = cards ? Visibility.Collapsed : Visibility.Visible;
+        cardScroll.VerticalScrollMode = cards ? ScrollMode.Enabled : ScrollMode.Disabled;
+        cardScroll.VerticalScrollBarVisibility = cards ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
         if (!cards) BuildTabBar(active);
         cardGrid.ColumnDefinitions.Clear(); cardGrid.RowDefinitions.Clear();
         var width = Math.Max(400, contentHost.ActualWidth - 24);
@@ -147,8 +154,15 @@ public sealed class MainWindow : Window
         if (cards && columns == 0) renderedAutoColumns = count;
         var rows = cards ? (int)Math.Ceiling(active.Length / (double)count) : 1;
         for (var i = 0; i < count; i++) cardGrid.ColumnDefinitions.Add(new ColumnDefinition());
-        for (var i = 0; i < rows; i++) cardGrid.RowDefinitions.Add(new RowDefinition { Height = cards && !fit ? new GridLength(280) : new GridLength(1, GridUnitType.Star) });
-        foreach (var pair in panelCards) pair.Value.Visibility = cards ? (visible.Contains(pair.Key) ? Visibility.Visible : Visibility.Collapsed) : (pair.Key == selectedTab ? Visibility.Visible : Visibility.Collapsed);
+        var available = Math.Max(190, (contentHost.ActualHeight - (cards ? 20 : 55) - Math.Max(0, rows - 1) * 10) / rows);
+        for (var i = 0; i < rows; i++) cardGrid.RowDefinitions.Add(new RowDefinition { Height = cards && !fit ? GridLength.Auto : new GridLength(available) });
+        renderedHeight = contentHost.ActualHeight;
+        foreach (var pair in panelCards)
+        {
+            pair.Value.Visibility = cards ? (visible.Contains(pair.Key) ? Visibility.Visible : Visibility.Collapsed) : (pair.Key == selectedTab ? Visibility.Visible : Visibility.Collapsed);
+            pair.Value.Height = cards && !fit ? manualCardHeights.GetValueOrDefault(pair.Key, 280) : double.NaN;
+            cardHeaders[pair.Key].CanDrag = cards; cardResizeHandles[pair.Key].Visibility = cards ? Visibility.Visible : Visibility.Collapsed;
+        }
         for (var i = 0; i < active.Length; i++)
         {
             var card = panelCards[active[i]];
@@ -158,16 +172,16 @@ public sealed class MainWindow : Window
 
     private void ScheduleResponsiveCardRender()
     {
-        if (!cards || dedicated is not null || columns != 0 || cardRenderPending) return;
+        if (!cards || dedicated is not null || cardRenderPending) return;
         var width = Math.Max(400, contentHost.ActualWidth - 24);
         var next = width >= 1650 ? 4 : width >= 1180 ? 3 : width >= 700 ? 2 : 1;
         next = Math.Min(next, visible.Count);
-        if (next == renderedAutoColumns) return;
+        if ((columns != 0 || next == renderedAutoColumns) && Math.Abs(contentHost.ActualHeight - renderedHeight) < 2) return;
         cardRenderPending = true;
         DispatcherQueue.TryEnqueue(() =>
         {
             cardRenderPending = false;
-            if (cards && dedicated is null && columns == 0) ApplyLayout();
+            if (cards && dedicated is null) ApplyLayout();
         });
     }
 
@@ -207,7 +221,13 @@ public sealed class MainWindow : Window
         controls.Children.Add(new FontIcon { Glyph = "", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 11, Foreground = accent, Margin = new Thickness(7, 0, 5, 0) }); Grid.SetColumn(controls, 1); header.Children.Add(controls);
         header.DragStarting += (_, e) => { e.Data.SetText(mode.ToString()); e.Data.RequestedOperation = DataPackageOperation.Move; };
         var body = new Grid(); body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition()); body.Children.Add(header); Grid.SetRow(panel, 1); body.Children.Add(panel);
+        var resize = new Border { Width = 20, Height = 20, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Background = Ui.Brush("#3AFFFFFF"), CornerRadius = new CornerRadius(6), Child = new TextBlock { Text = "◢", FontSize = 10, Foreground = accent, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } }; Grid.SetRow(resize, 1); body.Children.Add(resize);
         var border = new Border { Background = Ui.PanelBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(150, accent.Color.R, accent.Color.G, accent.Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(11), Child = body, AllowDrop = true, MinHeight = 190 };
+        cardHeaders[mode] = header; cardResizeHandles[mode] = resize;
+        var resizing = false; double startY = 0, startHeight = 0;
+        resize.PointerPressed += (_, e) => { if (!cards) return; resizing = true; startY = e.GetCurrentPoint(root).Position.Y; startHeight = border.ActualHeight; resize.CapturePointer(e.Pointer); e.Handled = true; };
+        resize.PointerMoved += (_, e) => { if (!resizing) return; fit = false; var height = Math.Max(190, startHeight + e.GetCurrentPoint(root).Position.Y - startY); manualCardHeights[mode] = height; border.Height = height; e.Handled = true; };
+        resize.PointerReleased += (_, e) => { resizing = false; resize.ReleasePointerCapture(e.Pointer); ApplyLayout(); e.Handled = true; };
         border.DragOver += (_, e) => { e.AcceptedOperation = DataPackageOperation.Move; };
         border.Drop += async (_, e) =>
         {
@@ -219,7 +239,7 @@ public sealed class MainWindow : Window
 
     private FlyoutBase CardsFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         flyout.Items.Add(new MenuFlyoutItem { Text = "VISIBLE PANELS", IsEnabled = false });
         flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var mode in Enum.GetValues<PanelMode>())
@@ -233,23 +253,18 @@ public sealed class MainWindow : Window
         return flyout;
     }
 
-    private void ShowNewWindowMenu()
+    private MenuFlyout CreateNewWindowFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         foreach (var mode in Enum.GetValues<PanelMode>()) { var item = new MenuFlyoutItem { Text = $"New {mode} window", Tag = mode }; item.Click += (_, _) => new MainWindow((PanelMode)item.Tag).Activate(); flyout.Items.Add(item); }
-        flyout.ShowAt(root);
-    }
-
-    private void ShowLayoutMenu()
-    {
-        CreateLayoutFlyout().ShowAt(root);
+        return flyout;
     }
 
     private MenuFlyout CreateLayoutFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         flyout.Items.Add(new MenuFlyoutItem { Text = "CARD HEIGHT", IsEnabled = false });
-        var fitted = new MenuFlyoutItem { Text = $"{(fit ? "✓" : "  ")}  Fit cards to window" }; fitted.Click += (_, _) => { fit = !fit; if (cards) ApplyLayout(); }; flyout.Items.Add(fitted);
+        var fitted = new MenuFlyoutItem { Text = $"{(fit ? "✓" : "  ")}  Fit cards to window" }; fitted.Click += (_, _) => { fit = !fit; if (fit) manualCardHeights.Clear(); if (cards) ApplyLayout(); }; flyout.Items.Add(fitted);
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(new MenuFlyoutItem { Text = "COLUMNS", IsEnabled = false });
         foreach (var value in new[] { 0, 1, 2, 3, 4 })
@@ -276,9 +291,9 @@ public sealed class MainWindow : Window
         topmostButton.BorderThickness = new Thickness(topmost ? 1 : 0);
     }
 
-    private void ShowAppearanceMenu()
+    private MenuFlyout CreateAppearanceFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         flyout.Items.Add(new MenuFlyoutItem { Text = "COLORS", IsEnabled = false });
         var text = new MenuFlyoutItem { Text = "Text color…" }; text.Click += (_, _) => PickColor(Ui.TextBrush); flyout.Items.Add(text);
         var accent = new MenuFlyoutItem { Text = "Accent color…" }; accent.Click += (_, _) => PickColor(Ui.RedBrush); flyout.Items.Add(accent);
@@ -291,7 +306,7 @@ public sealed class MainWindow : Window
             item.Click += (_, _) => { Preferences.Opacity = value; ApplyWindowOpacity(value); Preferences.Save(); };
             flyout.Items.Add(item);
         }
-        flyout.ShowAt(root);
+        return flyout;
     }
 
     private void PickColor(SolidColorBrush target)
@@ -319,9 +334,11 @@ public sealed class MainWindow : Window
     {
         if (dedicated is not null) return;
         App.Trace("Switching Cards to Tabs"); if (cards) ToggleLayout();
+        if (cardHeaders.Values.Any(header => header.CanDrag) || cardResizeHandles.Values.Any(handle => handle.Visibility == Visibility.Visible)) throw new InvalidOperationException("Tabbed mode retained card movement controls.");
         App.Trace("Selecting Runner tab"); selectedTab = PanelMode.Run; ApplyLayout();
         App.Trace("Selecting BTOP tab"); selectedTab = PanelMode.Btop; ApplyLayout();
         App.Trace("Switching Tabs to Cards"); ToggleLayout();
+        App.Trace("Testing manual card size and scrolling"); fit = false; manualCardHeights[PanelMode.Watch] = 420; ApplyLayout(); if (cardScroll.VerticalScrollMode != ScrollMode.Enabled) throw new InvalidOperationException("Card scrolling is disabled."); fit = true; manualCardHeights.Clear(); ApplyLayout();
         App.Trace("Opening Layout menu"); var layoutFlyout = CreateLayoutFlyout(); layoutFlyout.ShowAt(root); layoutFlyout.Hide();
         App.Trace("Toggling always on top"); ToggleTopmost(); ToggleTopmost();
         App.Trace("Applying transparency"); ApplyWindowOpacity(0.85);

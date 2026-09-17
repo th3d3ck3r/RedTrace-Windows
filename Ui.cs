@@ -71,6 +71,17 @@ public static class Ui
         return button;
     }
 
+    public static MenuFlyout Menu()
+    {
+        var style = new Style(typeof(MenuFlyoutPresenter));
+        style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(11)));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#F215161C")));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, Brush("#6AFFFFFF")));
+        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(5)));
+        return new MenuFlyout { MenuFlyoutPresenterStyle = style };
+    }
+
     public static TextBlock SmallLabel(string text, SolidColorBrush brush) => new()
     {
         Text = text,

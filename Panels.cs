@@ -62,7 +62,7 @@ public sealed class RunnerPanel : Grid, IDisposable
 
     private MenuFlyout ShellFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         flyout.Items.Add(new MenuFlyoutItem { Text = "SHELL", IsEnabled = false });
         flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var kind in Enum.GetValues<ShellKind>())
@@ -76,7 +76,7 @@ public sealed class RunnerPanel : Grid, IDisposable
 
     private MenuFlyout CommandsFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         foreach (var group in CommandCatalog.For(shell))
         {
             var parent = new MenuFlyoutSubItem { Text = group.Key };
@@ -229,7 +229,7 @@ public sealed class BtopPanel : Grid, IDisposable
 
     private MenuFlyout ColumnsFlyout()
     {
-        var flyout = new MenuFlyout();
+        var flyout = Ui.Menu();
         flyout.Items.Add(new MenuFlyoutItem { Text = "METRIC COLUMNS", IsEnabled = false });
         flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var value in new[] { 0, 1, 2, 3, 4 })

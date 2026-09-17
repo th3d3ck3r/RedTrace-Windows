@@ -1,0 +1,18 @@
+# .NET build output
+bin/
+obj/
+publish/
+
+# Visual Studio and user-specific files
+.vs/
+*.user
+*.suo
+
+# Package and test artifacts
+TestResults/
+*.nupkg
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

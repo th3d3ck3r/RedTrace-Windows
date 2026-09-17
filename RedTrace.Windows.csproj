@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>RedTrace</AssemblyName>
+    <RootNamespace>RedTrace.Windows</RootNamespace>
+    <ApplicationIcon Condition="Exists('Assets\RedTrace.ico')">Assets\RedTrace.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="codex-hook.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\RedTrace.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\RedTrace.ico')" />
+  </ItemGroup>
+</Project>

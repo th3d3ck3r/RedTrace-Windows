@@ -11,13 +11,21 @@ namespace RedTrace.Windows;
 public static class Ui
 {
     public static readonly Color Red = Color.FromArgb(255, 255, 59, 77);
-    public static readonly SolidColorBrush RedBrush = new(Red);
-    public static readonly SolidColorBrush TextBrush = Brush("#FFFF5362");
-    public static readonly SolidColorBrush WhiteBrush = Brush("#FFF4F4F6");
-    public static readonly SolidColorBrush MutedBrush = Brush("#FF8D8E98");
-    public static readonly SolidColorBrush PanelBrush = Brush("#B80A0B0F");
-    public static readonly SolidColorBrush RaisedBrush = Brush("#B8121319");
-    public static readonly SolidColorBrush HairlineBrush = Brush("#3DFFFFFF");
+    private static readonly SolidColorBrush FallbackRedBrush = new(Red);
+    private static readonly SolidColorBrush FallbackTextBrush = Brush("#FFDE3650");
+    private static readonly SolidColorBrush FallbackWhiteBrush = Brush("#FFF2F2F4");
+    private static readonly SolidColorBrush FallbackMutedBrush = Brush("#FF8B8D96");
+    private static readonly SolidColorBrush FallbackPanelBrush = Brush("#E60A0B0F");
+    private static readonly SolidColorBrush FallbackRaisedBrush = Brush("#E6121318");
+    private static readonly SolidColorBrush FallbackHairlineBrush = Brush("#35FFFFFF");
+
+    public static SolidColorBrush RedBrush => Resource("RedTraceAccentBrush", FallbackRedBrush);
+    public static SolidColorBrush TextBrush => Resource("RedTraceDataTextBrush", FallbackTextBrush);
+    public static SolidColorBrush WhiteBrush => Resource("RedTracePrimaryTextBrush", FallbackWhiteBrush);
+    public static SolidColorBrush MutedBrush => Resource("RedTraceSecondaryTextBrush", FallbackMutedBrush);
+    public static SolidColorBrush PanelBrush => Resource("RedTracePanelBrush", FallbackPanelBrush);
+    public static SolidColorBrush RaisedBrush => Resource("RedTraceRaisedBrush", FallbackRaisedBrush);
+    public static SolidColorBrush HairlineBrush => Resource("RedTraceHairlineBrush", FallbackHairlineBrush);
 
     public static SolidColorBrush Brush(string value)
     {
@@ -37,35 +45,60 @@ public static class Ui
 
     public static string Icon(PanelMode mode) => mode switch { PanelMode.Watch => "", PanelMode.Run => "", PanelMode.Codex => "", _ => "" };
 
-    public static TextBox Terminal(bool readOnly = true) => new()
+    private static T Resource<T>(string key, T fallback) where T : class
     {
-        IsReadOnly = readOnly,
-        AcceptsReturn = true,
-        TextWrapping = TextWrapping.NoWrap,
-        FontFamily = new FontFamily("Cascadia Mono"),
-        FontSize = 12,
-        Foreground = TextBrush,
-        Background = new SolidColorBrush(Colors.Transparent),
-        BorderThickness = new Thickness(0),
-        Padding = new Thickness(12, 10, 12, 10),
-        HorizontalAlignment = HorizontalAlignment.Stretch,
-        VerticalAlignment = VerticalAlignment.Stretch
-    };
+        try
+        {
+            if (Application.Current?.Resources[key] is T value) return value;
+        }
+        catch { /* App resources are unavailable in design-time or early startup. */ }
+        return fallback;
+    }
+
+    private static Style? Style(string key)
+    {
+        try { return Application.Current?.Resources[key] as Style; }
+        catch { return null; }
+    }
+
+    public static TextBox Terminal(bool readOnly = true)
+    {
+        var box = new TextBox { IsReadOnly = readOnly };
+        if (Style("RedTraceTerminalTextBoxStyle") is Style style) box.Style = style;
+        else
+        {
+            box.AcceptsReturn = true;
+            box.TextWrapping = TextWrapping.NoWrap;
+            box.FontFamily = new FontFamily("Cascadia Mono");
+            box.FontSize = 12;
+            box.Foreground = TextBrush;
+            box.Background = new SolidColorBrush(Colors.Transparent);
+            box.BorderThickness = new Thickness(0);
+            box.Padding = new Thickness(12, 10, 12, 10);
+            box.HorizontalAlignment = HorizontalAlignment.Stretch;
+            box.VerticalAlignment = VerticalAlignment.Stretch;
+        }
+        return box;
+    }
 
     public static Button IconButton(string glyph, string tip, Action action, SolidColorBrush? accent = null)
     {
         var button = new Button
         {
             Content = new FontIcon { Glyph = glyph, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 13 },
-            Width = 31,
-            Height = 30,
-            Padding = new Thickness(0),
-            Margin = new Thickness(2, 0, 2, 0),
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            Foreground = accent ?? Brush("#FFD0D1D7"),
-            CornerRadius = new CornerRadius(7)
+            Foreground = accent ?? WhiteBrush
         };
+        if (Style("RedTraceIconButtonStyle") is Style style) button.Style = style;
+        else
+        {
+            button.Width = 31;
+            button.Height = 30;
+            button.Padding = new Thickness(0);
+            button.Margin = new Thickness(2, 0, 2, 0);
+            button.Background = new SolidColorBrush(Colors.Transparent);
+            button.BorderThickness = new Thickness(0);
+            button.CornerRadius = new CornerRadius(7);
+        }
         ToolTipService.SetToolTip(button, tip);
         button.Click += (_, _) => action();
         return button;
@@ -73,24 +106,31 @@ public static class Ui
 
     public static MenuFlyout Menu()
     {
-        var style = new Style(typeof(MenuFlyoutPresenter));
-        style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(11)));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#F215161C")));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty, Brush("#6AFFFFFF")));
-        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
-        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(5)));
+        var style = Style("RedTraceMenuFlyoutPresenterStyle") ?? new Style(typeof(MenuFlyoutPresenter));
+        if (style.Setters.Count == 0)
+        {
+            style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(11)));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#F0101115")));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, HairlineBrush));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(5)));
+        }
         return new MenuFlyout { MenuFlyoutPresenterStyle = style };
     }
 
-    public static TextBlock SmallLabel(string text, SolidColorBrush brush) => new()
+    public static TextBlock SmallLabel(string text, SolidColorBrush brush)
     {
-        Text = text,
-        Foreground = brush,
-        FontFamily = new FontFamily("Cascadia Mono"),
-        FontSize = 10,
-        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        VerticalAlignment = VerticalAlignment.Center
-    };
+        var label = new TextBlock { Text = text, Foreground = brush };
+        if (Style("RedTraceLabelStyle") is Style style) label.Style = style;
+        else
+        {
+            label.FontFamily = new FontFamily("Segoe UI Variable Display");
+            label.FontSize = 10;
+            label.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+            label.VerticalAlignment = VerticalAlignment.Center;
+        }
+        return label;
+    }
 
     public static void Append(TextBox box, string value)
     {

@@ -5,14 +5,9 @@
     RequestedTheme="Dark">
     <Application.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Default">
-                    <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="Transparent" />
-                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFF4F4F6" />
-                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#A616171D" />
-                    <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#4AFFFFFF" />
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/RedTraceTheme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

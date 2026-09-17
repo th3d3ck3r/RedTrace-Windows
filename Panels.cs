@@ -4,8 +4,8 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using RedTrace.Windows.Controls;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.UI;
 
 namespace RedTrace.Windows;
 
@@ -135,9 +135,8 @@ public sealed class BtopPanel : Grid, IDisposable
     private readonly SystemSampler sampler = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly TextBlock processes = new() { FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, Foreground = Ui.TextBrush };
-    private readonly Dictionary<string, TextBlock> values = [];
     private readonly Dictionary<string, Sparkline> charts = [];
-    private readonly Dictionary<string, Border> tiles = [];
+    private readonly Dictionary<string, MetricCard> tiles = [];
     private readonly List<string> order = ["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"];
     private readonly Grid metrics = new() { ColumnSpacing = 8, RowSpacing = 8, Padding = new Thickness(10, 5, 10, 5) };
     private readonly Button columnsButton;
@@ -146,7 +145,7 @@ public sealed class BtopPanel : Grid, IDisposable
     private readonly List<TextBlock> cpuThreadValues = [];
     private Button cpuModeButton = null!;
     private bool cpuThreads;
-    private double cpuTotalHeight = 82;
+    private double cpuTotalHeight = 92;
     private int columns;
 
     public BtopPanel()
@@ -167,29 +166,26 @@ public sealed class BtopPanel : Grid, IDisposable
         timer.Tick += (_, _) => Refresh(); timer.Start(); Refresh();
     }
 
-    private Border Metric(string title, SolidColorBrush accent)
+    private MetricCard Metric(string title, SolidColorBrush accent)
     {
-        var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition());
-        var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        top.Children.Add(Ui.SmallLabel(title, accent));
+        var tile = new MetricCard { Label = title, AccentBrush = accent, Height = 92, MinHeight = 74, CanDrag = true, AllowDrop = true };
         if (title == "CPU")
         {
             cpuModeButton = new Button { Content = "TOTAL", Height = 22, Padding = new Thickness(7, 1, 7, 1), Margin = new Thickness(5, 0, 7, 0), Background = Ui.Brush("#40271118"), BorderBrush = accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Foreground = accent, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 8 };
-            cpuModeButton.Click += (_, _) => ToggleCpuMode(); Grid.SetColumn(cpuModeButton, 1); top.Children.Add(cpuModeButton);
+            cpuModeButton.Click += (_, _) => ToggleCpuMode();
+            tile.HeaderContent = cpuModeButton;
         }
-        var value = new TextBlock { Text = "—", Foreground = Ui.WhiteBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }; values[title] = value; Grid.SetColumn(value, 2); top.Children.Add(value); grid.Children.Add(top);
-        var chartHost = new Grid { Margin = new Thickness(0, 5, 0, 0) }; Grid.SetRow(chartHost, 1); grid.Children.Add(chartHost);
+        var chartHost = new Grid();
         var chart = new Sparkline(accent); charts[title] = chart; chartHost.Children.Add(chart);
         if (title == "CPU") chartHost.Children.Add(cpuThreadGrid);
-        var handle = new Border { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Background = Ui.Brush("#30FFFFFF"), CornerRadius = new CornerRadius(5), Child = new TextBlock { Text = "◢", FontSize = 9, Foreground = accent, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
-        grid.Children.Add(handle); Grid.SetRow(handle, 1);
-        var tile = new Border { Height = 82, MinHeight = 64, Background = Ui.RaisedBrush, BorderBrush = new SolidColorBrush(Color.FromArgb(100, accent.Color.R, accent.Color.G, accent.Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 7, 6, 5), Child = grid, CanDrag = true, AllowDrop = true };
+        tile.TrendContent = chartHost;
+        var handle = tile.ResizeHandle;
         tile.DragStarting += (_, e) => { e.Data.SetText(title); e.Data.RequestedOperation = DataPackageOperation.Move; };
         tile.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Move;
         tile.Drop += async (_, e) => { var source = await e.DataView.GetTextAsync(); Move(source, title); };
         var resizing = false; double startY = 0, startHeight = 0;
         handle.PointerPressed += (_, e) => { resizing = true; startY = e.GetCurrentPoint(this).Position.Y; startHeight = tile.ActualHeight; handle.CapturePointer(e.Pointer); e.Handled = true; };
-        handle.PointerMoved += (_, e) => { if (!resizing) return; tile.Height = Math.Max(64, startHeight + e.GetCurrentPoint(this).Position.Y - startY); e.Handled = true; };
+        handle.PointerMoved += (_, e) => { if (!resizing) return; tile.Height = Math.Max(74, startHeight + e.GetCurrentPoint(this).Position.Y - startY); e.Handled = true; };
         handle.PointerReleased += (_, e) => { resizing = false; handle.ReleasePointerCapture(e.Pointer); e.Handled = true; };
         return tile;
     }
@@ -206,7 +202,7 @@ public sealed class BtopPanel : Grid, IDisposable
             var count = Math.Max(1, sampler.CpuThreads.Count); var cols = count > 24 ? 4 : count > 12 ? 3 : count > 6 ? 2 : 1;
             tiles["CPU"].Height = Math.Max(96, Math.Ceiling(count / (double)cols) * 18 + 47);
         }
-        else tiles["CPU"].Height = Math.Max(64, cpuTotalHeight);
+        else tiles["CPU"].Height = Math.Max(74, cpuTotalHeight);
     }
 
     private void BuildCpuThreadCharts(int count)
@@ -259,15 +255,22 @@ public sealed class BtopPanel : Grid, IDisposable
     private void ResetLayout()
     {
         order.Clear(); order.AddRange(["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"]); columns = 0; columnsButton.Content = "AUTO  ▾"; columnsButton.Flyout = ColumnsFlyout();
-        foreach (var tile in tiles.Values) tile.Height = 82; LayoutMetrics();
+        foreach (var tile in tiles.Values) tile.Height = 92; LayoutMetrics();
     }
 
-    internal void RunSmokeTest() { columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics(); ToggleCpuMode(); ToggleCpuMode(); ResetLayout(); }
+    internal void RunSmokeTest()
+    {
+        if (tiles.Count != order.Count || tiles.Any(pair => pair.Value.Label != pair.Key)) throw new InvalidOperationException("Metric cards were not initialized correctly.");
+        if (tiles.Values.Any(tile => tile.Progress is < 0 or > 100)) throw new InvalidOperationException("Metric progress is outside its valid range.");
+        columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics(); ToggleCpuMode(); ToggleCpuMode(); ResetLayout();
+    }
     private void Refresh()
     {
         sampler.Sample();
-        values["CPU"].Text = $"{sampler.Cpu:0}%"; values["MEMORY"].Text = $"{sampler.Memory:0}%"; values["GPU"].Text = sampler.Gpu; values["DISK"].Text = sampler.Disk; values["NETWORK"].Text = sampler.Network; values["PROCESSES"].Text = sampler.ProcessCount.ToString();
-        charts["CPU"].Add(sampler.Cpu); charts["MEMORY"].Add(sampler.Memory); charts["GPU"].Add(Percent(sampler.Gpu)); charts["DISK"].Add(Percent(sampler.Disk)); charts["NETWORK"].Add(Math.Min(100, Math.Log10(1 + sampler.NetworkBytesPerSecond) / 7 * 100)); charts["PROCESSES"].Add(Math.Min(100, sampler.ProcessCount / 5.0));
+        var gpu = Percent(sampler.Gpu); var disk = Percent(sampler.Disk); var network = Math.Min(100, Math.Log10(1 + sampler.NetworkBytesPerSecond) / 7 * 100); var processLoad = Math.Min(100, sampler.ProcessCount / 5.0);
+        tiles["CPU"].DisplayValue = $"{sampler.Cpu:0}%"; tiles["MEMORY"].DisplayValue = $"{sampler.Memory:0}%"; tiles["GPU"].DisplayValue = sampler.Gpu; tiles["DISK"].DisplayValue = sampler.Disk; tiles["NETWORK"].DisplayValue = sampler.Network; tiles["PROCESSES"].DisplayValue = sampler.ProcessCount.ToString();
+        tiles["CPU"].Progress = sampler.Cpu; tiles["MEMORY"].Progress = sampler.Memory; tiles["GPU"].Progress = gpu; tiles["DISK"].Progress = disk; tiles["NETWORK"].Progress = network; tiles["PROCESSES"].Progress = processLoad;
+        charts["CPU"].Add(sampler.Cpu); charts["MEMORY"].Add(sampler.Memory); charts["GPU"].Add(gpu); charts["DISK"].Add(disk); charts["NETWORK"].Add(network); charts["PROCESSES"].Add(processLoad);
         if (cpuThreads)
         {
             BuildCpuThreadCharts(sampler.CpuThreads.Count);

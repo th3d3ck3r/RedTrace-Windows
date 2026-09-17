@@ -93,7 +93,7 @@ public sealed partial class MetricCard : UserControl
             CardBorder.BorderBrush = Ui.RedBrush;
             CardBorder.BorderThickness = new Thickness(1);
             CardBorder.CornerRadius = new CornerRadius(9);
-            CardBorder.Padding = new Thickness(10, 8);
+            CardBorder.Padding = new Thickness(10, 8, 10, 8);
         }
         if (Ui.StyleResource("RedTraceLabelStyle") is Style labelStyle) LabelText.Style = labelStyle;
         ValueText.FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono"));

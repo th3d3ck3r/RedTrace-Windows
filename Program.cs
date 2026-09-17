@@ -159,6 +159,15 @@ public static class Theme
                 <Setter Property="Foreground" Value="#F2F2F4"/>
                 <Setter Property="BorderBrush" Value="#3A3C48"/>
               </Style>
+              <Style TargetType="{x:Type ScrollBar}">
+                <Setter Property="Opacity" Value="0.32"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Style.Triggers>
+                  <Trigger Property="Orientation" Value="Vertical"><Setter Property="Width" Value="7"/></Trigger>
+                  <Trigger Property="Orientation" Value="Horizontal"><Setter Property="Height" Value="7"/></Trigger>
+                  <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.7"/></Trigger>
+                </Style.Triggers>
+              </Style>
             </ResourceDictionary>
             """);
         Application.Current.Resources.MergedDictionaries.Add(dictionary);
@@ -289,13 +298,16 @@ public sealed class RunnerPanel : Grid, IDisposable
 {
     private readonly TextBox output = Ui.OutputBox();
     private readonly TextBox input = Ui.InputBox();
-    private readonly ComboBox shell = new() { Width = 112, Height = 27, Margin = new Thickness(0, 0, 6, 0) };
+    private readonly Button shellButton;
+    private ShellKind selectedShell = ShellKind.PowerShell;
     private readonly List<string> history = [];
     private int historyIndex;
     private readonly ShellSession session;
 
     public RunnerPanel()
     {
+        shellButton = Ui.SelectorButton("PowerShell", "Choose shell", ChooseShell);
+        shellButton.Width = 118; shellButton.Margin = new Thickness(0, 0, 7, 0);
         RowDefinitions.Add(new RowDefinition());
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Children.Add(output);
@@ -305,9 +317,8 @@ public sealed class RunnerPanel : Grid, IDisposable
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Grid.SetRow(bar, 1);
-        shell.ItemsSource = Enum.GetValues<ShellKind>(); shell.SelectedItem = ShellKind.PowerShell;
         input.MinWidth = 120; input.HorizontalAlignment = HorizontalAlignment.Stretch; input.ToolTip = "Run a command…";
-        Grid.SetColumn(shell, 0); bar.Children.Add(shell);
+        Grid.SetColumn(shellButton, 0); bar.Children.Add(shellButton);
         Grid.SetColumn(input, 1); bar.Children.Add(input);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0) };
         actions.Children.Add(Ui.IconButton("\uE712", "Common commands", CommonCommands));
@@ -320,8 +331,19 @@ public sealed class RunnerPanel : Grid, IDisposable
         Children.Add(bar);
         session = new ShellSession(ShellKind.PowerShell);
         session.Output += Append;
-        shell.SelectionChanged += (_, _) => { if (shell.SelectedItem is ShellKind kind) session.ChangeShell(kind); };
         input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Run(); e.Handled = true; } };
+    }
+
+    private void ChooseShell()
+    {
+        var menu = new ContextMenu();
+        foreach (var kind in Enum.GetValues<ShellKind>())
+        {
+            var item = new MenuItem { Header = Ui.ShellName(kind), IsCheckable = true, IsChecked = selectedShell == kind, Tag = kind };
+            item.Click += (_, _) => { selectedShell = (ShellKind)item.Tag; shellButton.Content = Ui.ShellName(selectedShell) + "  ▾"; session.ChangeShell(selectedShell); };
+            menu.Items.Add(item);
+        }
+        menu.PlacementTarget = shellButton; menu.Placement = PlacementMode.Bottom; menu.IsOpen = true;
     }
 
     private void Run()
@@ -335,7 +357,7 @@ public sealed class RunnerPanel : Grid, IDisposable
     private void CommonCommands()
     {
         var menu = new ContextMenu();
-        foreach (var group in CommandCatalog.For((ShellKind)shell.SelectedItem))
+        foreach (var group in CommandCatalog.For(selectedShell))
         {
             var parent = new MenuItem { Header = group.Key };
             foreach (var item in group.Value)
@@ -380,18 +402,31 @@ public static class CommandCatalog
 public sealed class WatchPanel : Grid, IDisposable
 {
     private readonly TextBox output = Ui.OutputBox();
-    private readonly ComboBox source = new() { Width = 170, Height = 27, Margin = new Thickness(10, 7, 10, 3), HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly Button sourceButton;
+    private string selectedSource = "All RedTrace shells";
     public WatchPanel()
     {
+        sourceButton = Ui.SelectorButton(selectedSource, "Choose activity source", ChooseSource);
+        sourceButton.Width = 176; sourceButton.Margin = new Thickness(10, 8, 10, 3); sourceButton.HorizontalAlignment = HorizontalAlignment.Left;
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
-        source.ItemsSource = new[] { "All RedTrace shells", "PowerShell", "CommandPrompt", "Wsl" }; source.SelectedIndex = 0;
-        Children.Add(source); Grid.SetRow(output, 1); Children.Add(output);
+        Children.Add(sourceButton); Grid.SetRow(output, 1); Children.Add(output);
         output.Text = "Activity from RedTrace-launched shells appears here.\n";
         ActivityHub.Line += Append;
     }
+    private void ChooseSource()
+    {
+        var menu = new ContextMenu();
+        foreach (var source in new[] { "All RedTrace shells", "PowerShell", "CommandPrompt", "Wsl" })
+        {
+            var item = new MenuItem { Header = source, IsCheckable = true, IsChecked = selectedSource == source, Tag = source };
+            item.Click += (_, _) => { selectedSource = (string)item.Tag; sourceButton.Content = selectedSource + "  ▾"; };
+            menu.Items.Add(item);
+        }
+        menu.PlacementTarget = sourceButton; menu.Placement = PlacementMode.Bottom; menu.IsOpen = true;
+    }
     private void Append(string origin, string line) => Dispatcher.Invoke(() =>
     {
-        if (source.SelectedIndex > 0 && !string.Equals(source.SelectedItem?.ToString(), origin, StringComparison.OrdinalIgnoreCase)) return;
+        if (selectedSource != "All RedTrace shells" && !string.Equals(selectedSource, origin, StringComparison.OrdinalIgnoreCase)) return;
         output.AppendText(line + "\n"); output.ScrollToEnd();
     });
     public void Dispose() => ActivityHub.Line -= Append;
@@ -441,6 +476,7 @@ public sealed class SystemSampler
     private readonly ConcurrentDictionary<int, TimeSpan> processTimes = new();
     public double Cpu { get; private set; }
     public double Memory { get; private set; }
+    public double NetworkBytesPerSecond { get; private set; }
     public string Network { get; private set; } = "—";
     public string Disk { get; private set; } = "—";
     public string Gpu { get; private set; } = "—";
@@ -461,7 +497,9 @@ public sealed class SystemSampler
         var drive = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.Name.StartsWith(Path.GetPathRoot(Environment.SystemDirectory)!));
         if (drive != null) Disk = $"{100 * (drive.TotalSize - drive.AvailableFreeSpace) / drive.TotalSize}%";
         var now = DateTime.UtcNow; var bytes = NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up).Sum(n => (long)(n.GetIPv4Statistics().BytesReceived + n.GetIPv4Statistics().BytesSent));
-        var seconds = Math.Max(.1, (now - oldTime).TotalSeconds); if (oldNetwork != 0) Network = Ui.Rate((bytes - (long)oldNetwork) / seconds); oldNetwork = (ulong)Math.Max(0, bytes); oldTime = now;
+        var seconds = Math.Max(.1, (now - oldTime).TotalSeconds);
+        if (oldNetwork != 0) { NetworkBytesPerSecond = Math.Max(0, (bytes - (long)oldNetwork) / seconds); Network = Ui.Rate(NetworkBytesPerSecond); }
+        oldNetwork = (ulong)Math.Max(0, bytes); oldTime = now;
         var samples = new List<(int, string, double)>();
         foreach (var process in Process.GetProcesses())
         {
@@ -487,28 +525,53 @@ public sealed class SystemSampler
     }
 }
 
+public sealed class Sparkline : FrameworkElement
+{
+    private readonly Queue<double> samples = new();
+    private readonly Brush stroke;
+    public Sparkline(Brush stroke) { this.stroke = stroke; Height = 17; MinWidth = 40; SnapsToDevicePixels = true; IsHitTestVisible = false; }
+    public void Add(double value) { samples.Enqueue(Math.Clamp(value, 0, 100)); while (samples.Count > 60) samples.Dequeue(); InvalidateVisual(); }
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        base.OnRender(drawingContext);
+        var width = ActualWidth; var height = ActualHeight; if (width <= 1 || height <= 1) return;
+        drawingContext.DrawLine(new Pen(Ui.WithAlpha(stroke, 36), 1), new Point(0, height - .5), new Point(width, height - .5));
+        var values = samples.ToArray(); if (values.Length < 2) return;
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(new Point(0, height - values[0] / 100 * (height - 2) - 1), false, false);
+            for (var i = 1; i < values.Length; i++) context.LineTo(new Point(i * width / (values.Length - 1), height - values[i] / 100 * (height - 2) - 1), true, false);
+        }
+        geometry.Freeze(); drawingContext.DrawGeometry(null, new Pen(stroke, 1.5), geometry);
+    }
+}
+
 public sealed class BtopPanel : Grid, IDisposable
 {
     private readonly SystemSampler sampler = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly TextBlock cpu = Ui.Metric(), gpu = Ui.Metric(), ram = Ui.Metric(), disk = Ui.Metric(), network = Ui.Metric(), processCount = Ui.Metric();
+    private readonly Sparkline cpuChart = new(Theme.RedBrush), memoryChart = new(Brushes.Gold), gpuChart = new(Brushes.MediumPurple), diskChart = new(Brushes.DeepPink), networkChart = new(Brushes.Cyan), processChart = new(Brushes.LawnGreen);
     private readonly TextBox processes = Ui.OutputBox();
     public BtopPanel()
     {
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
         var metrics = new UniformGrid { Columns = 3, Margin = new Thickness(7, 7, 7, 3) };
-        metrics.Children.Add(Ui.MetricCard("CPU", cpu, Theme.RedBrush));
-        metrics.Children.Add(Ui.MetricCard("MEMORY", ram, Brushes.Gold));
-        metrics.Children.Add(Ui.MetricCard("GPU", gpu, Brushes.MediumPurple));
-        metrics.Children.Add(Ui.MetricCard("DISK", disk, Brushes.DeepPink));
-        metrics.Children.Add(Ui.MetricCard("NETWORK", network, Brushes.Cyan));
-        metrics.Children.Add(Ui.MetricCard("PROCESSES", processCount, Brushes.LawnGreen));
+        metrics.Children.Add(Ui.MetricCard("CPU", cpu, cpuChart, Theme.RedBrush));
+        metrics.Children.Add(Ui.MetricCard("MEMORY", ram, memoryChart, Brushes.Gold));
+        metrics.Children.Add(Ui.MetricCard("GPU", gpu, gpuChart, Brushes.MediumPurple));
+        metrics.Children.Add(Ui.MetricCard("DISK", disk, diskChart, Brushes.DeepPink));
+        metrics.Children.Add(Ui.MetricCard("NETWORK", network, networkChart, Brushes.Cyan));
+        metrics.Children.Add(Ui.MetricCard("PROCESSES", processCount, processChart, Brushes.LawnGreen));
         Children.Add(metrics); Grid.SetRow(processes, 1); Children.Add(processes);
         timer.Tick += (_, _) => Refresh(); timer.Start(); Refresh();
     }
     private void Refresh()
     {
         sampler.Sample(); cpu.Text = $"{sampler.Cpu:0}%"; gpu.Text = sampler.Gpu; ram.Text = $"{sampler.Memory:0}%"; disk.Text = sampler.Disk; network.Text = sampler.Network; processCount.Text = sampler.ProcessCount.ToString();
+        cpuChart.Add(sampler.Cpu); memoryChart.Add(sampler.Memory); gpuChart.Add(Ui.Percent(sampler.Gpu)); diskChart.Add(Ui.Percent(sampler.Disk));
+        networkChart.Add(Math.Min(100, Math.Log10(1 + sampler.NetworkBytesPerSecond) / 7 * 100)); processChart.Add(Math.Min(100, sampler.ProcessCount / 5.0));
         processes.Text = " PID    CPU   PROCESS\n" + string.Join("\n", sampler.Processes.Select(p => $"{p.Pid,6} {p.Cpu,6:0.0}%  {p.Name}"));
     }
     public void Dispose() => timer.Stop();
@@ -545,7 +608,7 @@ public sealed class MainWindow : Window
         content.Background = Theme.Background; content.BorderBrush = new SolidColorBrush(Color.FromArgb(88, 255, 59, 77)); content.BorderThickness = new Thickness(1); content.CornerRadius = new CornerRadius(11); content.Margin = new Thickness(8, 0, 8, 8); content.ClipToBounds = true; root.Children.Add(content);
         if (dedicated is RedMode only) panels[only] = CreatePanel(only);
         else foreach (var mode in Enum.GetValues<RedMode>()) panels[mode] = CreatePanel(mode);
-        UpdateModePill(); ShowLayout(); SizeChanged += (_, _) => { if (cards) ShowCards(); };
+        UpdateModePill(); ShowLayout(); SizeChanged += (_, _) => { if (dedicated is null && cards) ShowCards(); };
         toolbarTimer.Tick += (_, _) => RefreshToolbarStats(); toolbarTimer.Start(); RefreshToolbarStats();
         Closing += (_, e) => { if (!closeForReal && dedicated is null) { e.Cancel = true; Hide(); } else DisposePanels(); };
     }
@@ -623,26 +686,26 @@ public sealed class MainWindow : Window
             return;
         }
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Theme.Background };
-        var wrap = new WrapPanel { Margin = new Thickness(5), Background = Theme.Background }; scroll.Content = wrap; content.Child = scroll;
+        var wrap = new WrapPanel { Margin = new Thickness(7), Background = Theme.Background }; scroll.Content = wrap; content.Child = scroll;
         var width = Math.Max(400, content.ActualWidth - 20); var height = Math.Max(220, content.ActualHeight - 20);
         var count = columns == 0 ? width >= 1650 ? 4 : width >= 1200 ? 3 : width >= 720 ? 2 : 1 : columns;
         count = Math.Min(count, activeModes.Length);
-        var rows = (int)Math.Ceiling(activeModes.Length / (double)count); var cardWidth = width / count - 10; var cardHeight = fit ? Math.Max(180, height / rows - 10) : 260;
+        var rows = (int)Math.Ceiling(activeModes.Length / (double)count); var cardWidth = width / count - 12; var cardHeight = fit ? Math.Max(180, height / rows - 12) : 260;
         foreach (var mode in activeModes) { Detach(panels[mode]); wrap.Children.Add(Card(mode, panels[mode], cardWidth, fit ? cardHeight : manualHeights[mode])); }
     }
 
     private Border Card(RedMode mode, FrameworkElement panel, double width, double height)
     {
-        var border = new Border { Width = width, Height = height, Margin = new Thickness(5), BorderThickness = new Thickness(1), BorderBrush = Ui.Accent(mode), CornerRadius = new CornerRadius(10), Background = Theme.Panel, AllowDrop = true, ClipToBounds = true };
+        var border = new Border { Width = width, Height = height, Margin = new Thickness(6), BorderThickness = new Thickness(1), BorderBrush = Ui.WithAlpha(Ui.Accent(mode), 145), CornerRadius = new CornerRadius(10), Background = Theme.Panel, AllowDrop = true, ClipToBounds = true };
         var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); border.Child = grid;
-        var header = new DockPanel { Height = 31, Background = new SolidColorBrush(Color.FromRgb(14, 15, 20)), LastChildFill = true };
+        var header = new DockPanel { Height = 32, Background = new SolidColorBrush(Color.FromRgb(12, 13, 18)), LastChildFill = true };
         var drag = Ui.Glyph("\uE700", Ui.Accent(mode)); drag.Margin = new Thickness(7, 0, 7, 0); drag.Cursor = Cursors.SizeAll; DockPanel.SetDock(drag, Dock.Right); header.Children.Add(drag);
         var detach = Ui.IconButton("\uE8A7", $"Open dedicated {mode} window", () => new MainWindow(mode).Show(), Ui.Accent(mode)); detach.Margin = new Thickness(2, 3, 0, 3); DockPanel.SetDock(detach, Dock.Right); header.Children.Add(detach);
         var title = Ui.ModePill(Ui.ModeIcon(mode), mode.ToString().ToUpperInvariant(), Ui.Accent(mode), compact: true); title.Margin = new Thickness(7, 0, 0, 0); header.Children.Add(title);
         drag.MouseMove += (_, e) => { if (e.LeftButton == MouseButtonState.Pressed) DragDrop.DoDragDrop(drag, mode, DragDropEffects.Move); };
         border.Drop += (_, e) => { if (e.Data.GetData(typeof(RedMode)) is RedMode source && source != mode) { var a = order.IndexOf(source); var b = order.IndexOf(mode); order.RemoveAt(a); order.Insert(b, source); ShowCards(); } };
         grid.Children.Add(header); Grid.SetRow(panel, 1); grid.Children.Add(panel);
-        var thumb = new Thumb { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE, Background = Brushes.Transparent };
+        var thumb = Ui.ResizeThumb();
         thumb.DragDelta += (_, e) => { fit = false; border.Height = Math.Max(180, border.Height + e.VerticalChange); manualHeights[mode] = border.Height; };
         Grid.SetRowSpan(thumb, 2); grid.Children.Add(thumb); return border;
     }
@@ -743,11 +806,17 @@ public static class Ui
     public static Button Button(string text, string tip, Action action) { var b = new Button { Content = text, ToolTip = tip, Margin = new Thickness(2, 0, 2, 0), Padding = new Thickness(8, 4, 8, 4), Background = Brushes.Transparent, Foreground = Theme.RedBrush, BorderBrush = Theme.Hairline }; b.Click += (_, _) => action(); return b; }
     public static Button IconButton(string glyph, string tip, Action action, Brush? accent = null)
     {
-        var b = Button(glyph, tip, action); b.Width = 28; b.Height = 27; b.Padding = new Thickness(0); b.Margin = new Thickness(2, 0, 2, 0); b.BorderBrush = Brushes.Transparent; b.Foreground = accent ?? new SolidColorBrush(Color.FromRgb(188, 189, 198)); b.FontFamily = new FontFamily("Segoe Fluent Icons"); b.FontSize = 12; return b;
+        var b = Button(glyph, tip, action); b.Tag = "RedTraceIcon"; b.Width = 28; b.Height = 27; b.Padding = new Thickness(0); b.Margin = new Thickness(2, 0, 2, 0); b.BorderBrush = Brushes.Transparent; b.Foreground = accent ?? new SolidColorBrush(Color.FromRgb(188, 189, 198)); b.FontFamily = new FontFamily("Segoe Fluent Icons"); b.FontSize = 12; return b;
     }
     public static Button PillButton(string text, string tip, Action action)
     {
         var b = Button(text, tip, action); b.Height = 26; b.Padding = new Thickness(10, 3, 10, 3); b.Margin = new Thickness(0, 0, 4, 0); b.Foreground = Theme.RedBrush; b.Background = new SolidColorBrush(Color.FromRgb(31, 18, 22)); b.BorderBrush = new SolidColorBrush(Color.FromRgb(91, 35, 44)); b.FontFamily = new FontFamily(Theme.FontName); b.FontWeight = FontWeights.SemiBold; b.FontSize = 10; return b;
+    }
+    public static Button SelectorButton(string text, string tip, Action action)
+    {
+        var button = Button(text + "  ▾", tip, action); button.Height = 27; button.HorizontalContentAlignment = HorizontalAlignment.Left;
+        button.Background = Theme.Raised; button.BorderBrush = Theme.Hairline; button.Foreground = new SolidColorBrush(Color.FromRgb(222, 223, 229));
+        button.FontFamily = new FontFamily(Theme.FontName); button.FontSize = 10; button.Padding = new Thickness(9, 3, 8, 3); return button;
     }
     public static TextBlock Glyph(string value, Brush? color = null) => new() { Text = value, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 11, Foreground = color ?? Theme.RedBrush, VerticalAlignment = VerticalAlignment.Center };
     public static Border ModePill(string glyph, string text, Brush accent, bool compact = false)
@@ -760,16 +829,30 @@ public static class Ui
     public static string ModeIcon(RedMode mode) => mode switch { RedMode.Watch => "\uE890", RedMode.Run => "\uE756", RedMode.Codex => "\uE943", _ => "\uE9D2" };
     public static TextBlock Label(string value) => new() { Text = value, Foreground = Theme.RedBrush, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
     public static TextBlock Metric() => new() { Foreground = Brushes.White, FontSize = 17, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 2, 0, 0) };
-    public static Border MetricCard(string title, TextBlock value, Brush accent)
+    public static Border MetricCard(string title, TextBlock value, Sparkline chart, Brush accent)
     {
-        var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(2) });
-        var stack = new StackPanel(); stack.Children.Add(new TextBlock { Text = title, Foreground = accent, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, FontSize = 8 }); stack.Children.Add(value); grid.Children.Add(stack);
-        var line = new Border { Height = 2, CornerRadius = new CornerRadius(1), Background = accent, Opacity = .85, Margin = new Thickness(0, 7, 0, 0) }; Grid.SetRow(line, 1); grid.Children.Add(line);
-        return new Border { Child = grid, BorderBrush = new SolidColorBrush(Color.FromArgb(105, ((SolidColorBrush)accent).Color.R, ((SolidColorBrush)accent).Color.G, ((SolidColorBrush)accent).Color.B)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(4), Padding = new Thickness(9, 7, 9, 7), Background = Theme.Raised };
+        var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var label = new TextBlock { Text = title, Foreground = accent, FontFamily = new FontFamily(Theme.FontName), FontWeight = FontWeights.SemiBold, FontSize = 8, VerticalAlignment = VerticalAlignment.Center };
+        top.Children.Add(label); Grid.SetColumn(value, 1); value.Margin = new Thickness(8, 0, 0, 0); top.Children.Add(value); grid.Children.Add(top);
+        chart.Margin = new Thickness(0, 4, 0, 0); Grid.SetRow(chart, 1); grid.Children.Add(chart);
+        return new Border { Child = grid, BorderBrush = WithAlpha(accent, 92), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(4), Padding = new Thickness(9, 6, 9, 6), Background = Theme.Raised };
+    }
+    public static Thumb ResizeThumb()
+    {
+        var visual = new FrameworkElementFactory(typeof(Border)); visual.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        return new Thumb { Width = 20, Height = 20, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Template = new ControlTemplate(typeof(Thumb)) { VisualTree = visual } };
     }
     public static Brush Accent(RedMode mode) => mode switch { RedMode.Run => Brushes.Orange, RedMode.Codex => Brushes.DeepPink, RedMode.Btop => Brushes.Cyan, _ => Theme.RedBrush };
+    public static Brush WithAlpha(Brush brush, byte alpha)
+    {
+        var color = brush is SolidColorBrush solid ? solid.Color : Colors.White;
+        return new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
+    }
+    public static double Percent(string value) => double.TryParse(value.Trim().TrimEnd('%'), out var number) ? Math.Clamp(number, 0, 100) : 0;
+    public static string ShellName(ShellKind kind) => kind switch { ShellKind.CommandPrompt => "Command Prompt", ShellKind.Wsl => "WSL", _ => "PowerShell" };
     public static string Rate(double bytes) => bytes > 1024 * 1024 ? $"{bytes / 1024 / 1024:0.0} MB/s" : bytes > 1024 ? $"{bytes / 1024:0} KB/s" : $"{bytes:0} B/s";
-    public static void ApplyTypography(DependencyObject root) { for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) { var child = VisualTreeHelper.GetChild(root, i); if (child is Control c) { c.FontFamily = new FontFamily(Theme.FontName); c.FontSize = Theme.FontSize; } ApplyTypography(child); } }
+    public static void ApplyTypography(DependencyObject root) { for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) { var child = VisualTreeHelper.GetChild(root, i); if (child is Control c && !Equals(c.Tag, "RedTraceIcon")) { c.FontFamily = new FontFamily(Theme.FontName); c.FontSize = Theme.FontSize; } ApplyTypography(child); } }
     public static void ApplyTerminalColors(DependencyObject root) { for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) { var child = VisualTreeHelper.GetChild(root, i); if (child is TextBox box) box.Foreground = Theme.Text; ApplyTerminalColors(child); } }
 }
 

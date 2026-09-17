@@ -134,7 +134,11 @@ public sealed class BtopPanel : Grid, IDisposable
 {
     private readonly SystemSampler sampler = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly TextBlock processes = new() { FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, Foreground = Ui.TextBrush };
+    private readonly Grid processTable = new();
+    private readonly List<ProcessTableRow> processRows = [];
+    private readonly SolidColorBrush processCriticalBackground = Ui.Brush("#321F060B");
+    private readonly SolidColorBrush processWarningBackground = Ui.Brush("#251B1205");
+    private readonly SolidColorBrush processNormalBackground = Ui.Brush("#00000000");
     private readonly Dictionary<string, Sparkline> charts = [];
     private readonly Dictionary<string, MetricCard> tiles = [];
     private readonly List<string> order = ["CPU", "MEMORY", "GPU", "DISK", "NETWORK", "PROCESSES"];
@@ -161,6 +165,9 @@ public sealed class BtopPanel : Grid, IDisposable
 
     private const double MinimumAutoMetricWidth = 220;
     private const int MaximumAutoMetricColumns = 3;
+    private const int MaximumProcessRows = 12;
+
+    private sealed record ProcessTableRow(Border Container, TextBlock Pid, TextBlock Cpu, TextBlock Memory, TextBlock Path);
 
     public BtopPanel()
     {
@@ -176,11 +183,78 @@ public sealed class BtopPanel : Grid, IDisposable
         metricsBody.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         metricsBody.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         metricsBody.Children.Add(metrics);
-        var processBorder = new Border { Background = Ui.Brush("#5A050609"), BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(10, 5, 10, 10), Child = processes };
+        BuildProcessTable();
+        var processBorder = new Border { Background = Ui.Brush("#5A050609"), BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), CornerRadius = Ui.Resource("RedTraceCardCornerRadius", new CornerRadius(9)), Margin = new Thickness(10, 5, 10, 10), Child = processTable };
         Grid.SetRow(processBorder, 1); metricsBody.Children.Add(processBorder);
         metricsScroll.Content = metricsBody; Grid.SetRow(metricsScroll, 1); Children.Add(metricsScroll);
         SizeChanged += (_, _) => ScheduleMetricLayout(); LayoutMetrics();
         timer.Tick += (_, _) => Refresh(); timer.Start(); Refresh();
+    }
+
+    private void BuildProcessTable()
+    {
+        processTable.RowDefinitions.Add(new RowDefinition { Height = new GridLength(27) });
+        processTable.Children.Add(ProcessTableGrid("PID", "CPU%", "MEM%", "PROCESS PATH", true));
+        for (var i = 0; i < MaximumProcessRows; i++)
+        {
+            processTable.RowDefinitions.Add(new RowDefinition { Height = new GridLength(25) });
+            var row = ProcessTableGrid("", "", "", "", false);
+            var cells = row.Children.OfType<TextBlock>().ToArray();
+            var container = new Border { BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(0, 1, 0, 0), Child = row, Visibility = Visibility.Collapsed };
+            Grid.SetRow(container, i + 1); processTable.Children.Add(container);
+            processRows.Add(new ProcessTableRow(container, cells[0], cells[1], cells[2], cells[3]));
+        }
+    }
+
+    private static Grid ProcessTableGrid(string pid, string cpu, string memory, string path, bool header)
+    {
+        var row = new Grid { Padding = new Thickness(9, 0), ColumnSpacing = 8 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        var values = new[] { pid, cpu, memory, path };
+        for (var i = 0; i < values.Length; i++)
+        {
+            var cell = new TextBlock
+            {
+                Text = values[i],
+                FontFamily = Ui.Resource("RedTraceMonoFontFamily", new FontFamily("Cascadia Mono")),
+                FontSize = header ? 8 : 9,
+                FontWeight = header ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+                Foreground = header ? Ui.MutedBrush : Ui.TextBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = i is 0 or 1 or 2 ? TextAlignment.Right : TextAlignment.Left,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                IsTextSelectionEnabled = false
+            };
+            Grid.SetColumn(cell, i); row.Children.Add(cell);
+        }
+        return row;
+    }
+
+    private void RefreshProcessTable()
+    {
+        for (var i = 0; i < processRows.Count; i++)
+        {
+            var row = processRows[i];
+            if (i >= sampler.Processes.Count) { row.Container.Visibility = Visibility.Collapsed; continue; }
+            var process = sampler.Processes[i];
+            row.Container.Visibility = Visibility.Visible;
+            row.Pid.Text = process.Pid.ToString("N0");
+            row.Cpu.Text = $"{process.Cpu:0.0}";
+            row.Memory.Text = $"{process.Memory:0.0}";
+            row.Path.Text = process.ExecutablePath;
+            ToolTipService.SetToolTip(row.Path, process.ExecutablePath);
+            var critical = process.Cpu >= 20 || process.Memory >= 10;
+            var warning = !critical && (process.Cpu >= 8 || process.Memory >= 5);
+            var emphasis = critical ? Ui.Resource("RedTraceAlertBrush", Ui.RedBrush) : warning ? Ui.Resource("RedTraceWarningBrush", Ui.RedBrush) : Ui.TextBrush;
+            row.Cpu.Foreground = process.Cpu >= 8 ? emphasis : Ui.MutedBrush;
+            row.Memory.Foreground = process.Memory >= 5 ? emphasis : Ui.MutedBrush;
+            row.Pid.Foreground = critical ? emphasis : Ui.MutedBrush;
+            row.Path.Foreground = critical || warning ? emphasis : Ui.TextBrush;
+            row.Container.Background = critical ? processCriticalBackground : warning ? processWarningBackground : processNormalBackground;
+        }
     }
 
     private MetricCard Metric(string title, SolidColorBrush accent)
@@ -309,6 +383,8 @@ public sealed class BtopPanel : Grid, IDisposable
         App.Trace("Testing responsive metric breakpoints");
         if (CalculateAutoColumns(300) != 1 || CalculateAutoColumns(520) != 2 || CalculateAutoColumns(900) != 3) throw new InvalidOperationException("Metric auto-column breakpoints are invalid.");
         if (metricsScroll.VerticalScrollBarVisibility != ScrollBarVisibility.Auto || metricsScroll.HorizontalScrollMode != ScrollMode.Disabled) throw new InvalidOperationException("Metric scrolling is not configured correctly.");
+        App.Trace("Validating process table");
+        if (processRows.Count != MaximumProcessRows || processTable.RowDefinitions.Count != MaximumProcessRows + 1) throw new InvalidOperationException("Process table rows were not initialized correctly.");
         App.Trace("Testing metric layout"); columns = 2; Move("GPU", "CPU"); tiles["CPU"].Height = 96; LayoutMetrics();
         columns = 4; LayoutMetrics(); if (metrics.ColumnDefinitions.Count != 4) throw new InvalidOperationException("Manual metric columns were not preserved.");
         App.Trace("Testing CPU thread mode"); ToggleCpuMode(); ToggleCpuMode();
@@ -326,7 +402,7 @@ public sealed class BtopPanel : Grid, IDisposable
             BuildCpuThreadCharts(sampler.CpuThreads.Count);
             for (var i = 0; i < Math.Min(cpuThreadCharts.Count, sampler.CpuThreads.Count); i++) { cpuThreadCharts[i].Add(sampler.CpuThreads[i]); cpuThreadValues[i].Text = $"{sampler.CpuThreads[i]:0}%"; }
         }
-        processes.Text = " PID    CPU   PROCESS\n" + string.Join("\n", sampler.Processes.Select(p => $"{p.Pid,6} {p.Cpu,6:0.0}%  {p.Name}"));
+        RefreshProcessTable();
     }
     private static double Percent(string value) => double.TryParse(value.Trim().TrimEnd('%'), out var number) ? Math.Clamp(number, 0, 100) : 0;
     public void Dispose() => timer.Stop();

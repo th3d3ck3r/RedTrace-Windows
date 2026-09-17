@@ -128,6 +128,8 @@ public static class CommandCatalog
 
 public sealed class SystemSampler
 {
+    public sealed record ProcessSample(int Pid, string Name, string ExecutablePath, double Cpu, double Memory);
+
     [StructLayout(LayoutKind.Sequential)] private struct FileTime { public uint Low, High; public ulong Value => ((ulong)High << 32) | Low; }
     [StructLayout(LayoutKind.Sequential)] private struct ProcessorTimes { public long Idle, Kernel, User, Dpc, Interrupt; public uint InterruptCount; }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)] private struct MemoryStatus { public uint Length; public uint Load; public ulong Total, Available, TotalPage, AvailablePage, TotalVirtual, AvailableVirtual, AvailableExtended; }
@@ -138,6 +140,7 @@ public sealed class SystemSampler
     private ProcessorTimes[]? oldProcessorTimes;
     private DateTime oldTime = DateTime.UtcNow;
     private readonly ConcurrentDictionary<int, TimeSpan> processTimes = new();
+    private readonly Dictionary<(int Pid, string Name), string> processPaths = [];
     private int gpuTick;
     public double Cpu { get; private set; }
     public IReadOnlyList<double> CpuThreads { get; private set; } = [];
@@ -147,7 +150,7 @@ public sealed class SystemSampler
     public string Disk { get; private set; } = "—";
     public string Gpu { get; private set; } = "—";
     public int ProcessCount { get; private set; }
-    public IReadOnlyList<(int Pid, string Name, double Cpu)> Processes { get; private set; } = [];
+    public IReadOnlyList<ProcessSample> Processes { get; private set; } = [];
 
     public void Sample()
     {
@@ -167,15 +170,30 @@ public sealed class SystemSampler
         var seconds = Math.Max(.1, (now - oldTime).TotalSeconds);
         if (oldNetwork != 0) { NetworkBytesPerSecond = Math.Max(0, (bytes - (long)oldNetwork) / seconds); Network = Rate(NetworkBytesPerSecond); }
         oldNetwork = (ulong)Math.Max(0, bytes); oldTime = now;
-        var samples = new List<(int, string, double)>();
+        var samples = new List<(int Pid, string Name, double Cpu, long WorkingSet)>();
         foreach (var process in Process.GetProcesses())
         {
-            try { var current = process.TotalProcessorTime; processTimes.TryGetValue(process.Id, out var previous); processTimes[process.Id] = current; var percent = previous == default ? 0 : Math.Max(0, (current - previous).TotalSeconds / seconds / Environment.ProcessorCount * 100); samples.Add((process.Id, process.ProcessName, percent)); }
+            try { var current = process.TotalProcessorTime; processTimes.TryGetValue(process.Id, out var previous); processTimes[process.Id] = current; var percent = previous == default ? 0 : Math.Max(0, (current - previous).TotalSeconds / seconds / Environment.ProcessorCount * 100); samples.Add((process.Id, process.ProcessName, percent, process.WorkingSet64)); }
             catch { }
             finally { process.Dispose(); }
         }
         ProcessCount = samples.Count;
-        Processes = samples.OrderByDescending(x => x.Item3).Take(12).ToArray();
+        var visibleProcesses = samples.OrderByDescending(x => x.Cpu).Take(12).ToArray();
+        var visibleKeys = visibleProcesses.Select(sample => (sample.Pid, sample.Name)).ToHashSet();
+        foreach (var key in processPaths.Keys.Where(key => !visibleKeys.Contains(key)).ToArray()) processPaths.Remove(key);
+        Processes = visibleProcesses.Select(sample =>
+        {
+            var key = (sample.Pid, sample.Name);
+            if (!processPaths.TryGetValue(key, out var executablePath))
+            {
+                executablePath = sample.Name;
+                try { using var process = Process.GetProcessById(sample.Pid); executablePath = process.MainModule?.FileName ?? sample.Name; }
+                catch { }
+                processPaths[key] = executablePath;
+            }
+            var memoryPercent = memory.Total > 0 ? 100.0 * Math.Max(0, sample.WorkingSet) / memory.Total : 0;
+            return new ProcessSample(sample.Pid, sample.Name, executablePath, sample.Cpu, memoryPercent);
+        }).ToArray();
         if (++gpuTick % 5 == 1) _ = SampleGpu();
     }
 

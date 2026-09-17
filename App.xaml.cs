@@ -26,6 +26,7 @@ public partial class App : Application
     {
         try
         {
+            Preferences.Load();
             try { HookInstaller.Install(silent: true); } catch (Exception hookError) { WriteCrashLog(hookError, "Hook setup"); }
             mainWindow = new MainWindow();
             mainWindow.Activate();

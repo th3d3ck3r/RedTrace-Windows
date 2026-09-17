@@ -33,6 +33,7 @@ public sealed class MainWindow : Window
     private readonly DispatcherTimer toolbarTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly TextBlock stats = new();
     private readonly Button layoutButton;
+    private Button topmostButton = null!;
     private bool cards = true;
     private int columns;
     private bool fit = true;
@@ -43,6 +44,10 @@ public sealed class MainWindow : Window
     private PanelMode selectedTab = PanelMode.Watch;
 
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
+    [DllImport("user32.dll")] private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value);
+    [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint colorKey, byte alpha, uint flags);
+    [DllImport("comdlg32.dll", CharSet = CharSet.Unicode)] private static extern bool ChooseColor(ref ChooseColorData data);
 
     public MainWindow(PanelMode? dedicated = null)
     {
@@ -63,6 +68,8 @@ public sealed class MainWindow : Window
         var titleBar = BuildTitleBar(out layoutButton); root.Children.Add(titleBar); SetTitleBar(titleBar);
         contentHost.Background = Ui.Brush("#74050609"); contentHost.BorderBrush = Ui.Brush("#46FF3B4D"); contentHost.BorderThickness = new Thickness(1); contentHost.CornerRadius = new CornerRadius(12); contentHost.Margin = new Thickness(10, 0, 10, 10);
         Grid.SetRow(contentHost, 1); root.Children.Add(contentHost);
+        ApplyWindowOpacity(Preferences.Opacity);
+        UpdateTopmostButton();
 
         if (dedicated is PanelMode only)
         {
@@ -87,10 +94,11 @@ public sealed class MainWindow : Window
         if (dedicated is null) layout.Flyout = CardsFlyout(); bar.Children.Add(layout);
         stats.Foreground = Ui.MutedBrush; stats.FontFamily = new FontFamily("Cascadia Mono"); stats.FontSize = 9; stats.HorizontalAlignment = HorizontalAlignment.Right; stats.VerticalAlignment = VerticalAlignment.Center; stats.Margin = new Thickness(10, 0, 10, 0); Grid.SetColumn(stats, 1); bar.Children.Add(stats);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        if (dedicated is null) actions.Children.Add(Ui.IconButton("", "Switch Tabs / Cards", ToggleLayout));
+        if (dedicated is null) actions.Children.Add(Ui.IconButton("", "Switch Cards / Tabs", ToggleLayout));
         actions.Children.Add(Ui.IconButton("", "New window", ShowNewWindowMenu));
-        actions.Children.Add(Ui.IconButton("", "Layout", ShowLayoutMenu));
-        actions.Children.Add(Ui.IconButton("", "Always on top", ToggleTopmost));
+        actions.Children.Add(Ui.IconButton("", "Card layout", ShowLayoutMenu));
+        actions.Children.Add(Ui.IconButton("", "Appearance", ShowAppearanceMenu));
+        topmostButton = Ui.IconButton("", "Always on top", ToggleTopmost); actions.Children.Add(topmostButton);
         Grid.SetColumn(actions, 2); bar.Children.Add(actions);
         return bar;
     }
@@ -212,8 +220,8 @@ public sealed class MainWindow : Window
         var flyout = new MenuFlyout();
         foreach (var mode in Enum.GetValues<PanelMode>())
         {
-            var item = new ToggleMenuFlyoutItem { Text = mode.ToString().ToUpperInvariant(), IsChecked = visible.Contains(mode), Tag = mode };
-            item.Click += (_, _) => { var value = (PanelMode)item.Tag; if (item.IsChecked) visible.Add(value); else visible.Remove(value); ApplyLayout(); layoutButton.Flyout = CardsFlyout(); };
+            var item = new MenuFlyoutItem { Text = $"{(visible.Contains(mode) ? "✓" : "  ")}  {mode.ToString().ToUpperInvariant()}", Tag = mode };
+            item.Click += (_, _) => { var value = (PanelMode)item.Tag; if (!visible.Add(value)) visible.Remove(value); ApplyLayout(); layoutButton.Flyout = CardsFlyout(); };
             flyout.Items.Add(item);
         }
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -230,15 +238,73 @@ public sealed class MainWindow : Window
 
     private void ShowLayoutMenu()
     {
+        CreateLayoutFlyout().ShowAt(root);
+    }
+
+    private MenuFlyout CreateLayoutFlyout()
+    {
         var flyout = new MenuFlyout();
-        var fitted = new ToggleMenuFlyoutItem { Text = "Fit cards to window", IsChecked = fit }; fitted.Click += (_, _) => { fit = fitted.IsChecked; if (cards) ApplyLayout(); }; flyout.Items.Add(fitted);
-        foreach (var value in new[] { 0, 1, 2, 3, 4 }) { var item = new RadioMenuFlyoutItem { Text = value == 0 ? "Columns: AUTO" : $"Columns: {value}", GroupName = "columns", IsChecked = columns == value, Tag = value }; item.Click += (_, _) => { columns = (int)item.Tag; if (cards) ApplyLayout(); }; flyout.Items.Add(item); }
-        flyout.ShowAt(root);
+        var fitted = new MenuFlyoutItem { Text = $"{(fit ? "✓" : "  ")}  Fit cards to window" }; fitted.Click += (_, _) => { fit = !fit; if (cards) ApplyLayout(); }; flyout.Items.Add(fitted);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (var value in new[] { 0, 1, 2, 3, 4 })
+        {
+            var label = value == 0 ? "AUTO" : value.ToString();
+            var item = new MenuFlyoutItem { Text = $"{(columns == value ? "✓" : "  ")}  Columns: {label}", Tag = value };
+            item.Click += (_, _) => { columns = (int)item.Tag; if (cards) ApplyLayout(); };
+            flyout.Items.Add(item);
+        }
+        return flyout;
     }
 
     private void ToggleTopmost()
     {
-        topmost = !topmost; if (appWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = topmost;
+        topmost = !topmost; if (appWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = topmost; UpdateTopmostButton();
+    }
+
+    private void UpdateTopmostButton()
+    {
+        if (topmostButton is null) return;
+        topmostButton.Foreground = topmost ? Ui.RedBrush : Ui.MutedBrush;
+        topmostButton.Background = topmost ? Ui.Brush("#552A0B11") : new SolidColorBrush(Colors.Transparent);
+        topmostButton.BorderBrush = topmost ? Ui.RedBrush : Ui.HairlineBrush;
+        topmostButton.BorderThickness = new Thickness(topmost ? 1 : 0);
+    }
+
+    private void ShowAppearanceMenu()
+    {
+        var flyout = new MenuFlyout();
+        var text = new MenuFlyoutItem { Text = "Text color…" }; text.Click += (_, _) => PickColor(Ui.TextBrush); flyout.Items.Add(text);
+        var accent = new MenuFlyoutItem { Text = "Accent color…" }; accent.Click += (_, _) => PickColor(Ui.RedBrush); flyout.Items.Add(accent);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (var amount in new[] { 0.70, 0.85, 0.95, 1.0 })
+        {
+            var value = amount;
+            var item = new MenuFlyoutItem { Text = $"{(Math.Abs(Preferences.Opacity - value) < .01 ? "✓" : "  ")}  Opacity: {value:P0}" };
+            item.Click += (_, _) => { Preferences.Opacity = value; ApplyWindowOpacity(value); Preferences.Save(); };
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt(root);
+    }
+
+    private void PickColor(SolidColorBrush target)
+    {
+        var memory = Marshal.AllocCoTaskMem(16 * sizeof(uint));
+        try
+        {
+            for (var i = 0; i < 16; i++) Marshal.WriteInt32(memory, i * sizeof(uint), 0);
+            var color = target.Color;
+            var data = new ChooseColorData { Size = Marshal.SizeOf<ChooseColorData>(), Owner = hwnd, CustomColors = memory, Flags = 0x00000103, Result = (uint)(color.R | color.G << 8 | color.B << 16) };
+            if (ChooseColor(ref data)) { target.Color = Color.FromArgb(255, (byte)data.Result, (byte)(data.Result >> 8), (byte)(data.Result >> 16)); Preferences.Save(); }
+        }
+        finally { Marshal.FreeCoTaskMem(memory); }
+    }
+
+    private void ApplyWindowOpacity(double value)
+    {
+        const int exStyle = -20; const long layered = 0x00080000; const uint alphaFlag = 0x2;
+        var style = GetWindowLongPtr(hwnd, exStyle).ToInt64();
+        SetWindowLongPtr(hwnd, exStyle, new IntPtr(style | layered));
+        SetLayeredWindowAttributes(hwnd, 0, (byte)Math.Clamp((int)Math.Round(value * 255), 1, 255), alphaFlag);
     }
 
     internal void RunSmokeTest()
@@ -248,6 +314,9 @@ public sealed class MainWindow : Window
         App.Trace("Selecting Runner tab"); selectedTab = PanelMode.Run; ApplyLayout();
         App.Trace("Selecting BTOP tab"); selectedTab = PanelMode.Btop; ApplyLayout();
         App.Trace("Switching Tabs to Cards"); ToggleLayout();
+        App.Trace("Opening Layout menu"); var layoutFlyout = CreateLayoutFlyout(); layoutFlyout.ShowAt(root); layoutFlyout.Hide();
+        App.Trace("Toggling always on top"); ToggleTopmost(); ToggleTopmost();
+        App.Trace("Applying transparency"); ApplyWindowOpacity(0.85);
         App.Trace("Layout switching completed");
     }
 
@@ -262,4 +331,11 @@ public sealed class MainWindow : Window
     public void ToggleVisibility() { if (IsWindowVisible(hwnd)) appWindow.Hide(); else ShowAndActivate(); }
     public void ShowAndActivate() { appWindow.Show(); Activate(); }
     public void CloseForReal() { closeForReal = true; Close(); }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ChooseColorData
+    {
+        public int Size; public IntPtr Owner, Instance; public uint Result; public IntPtr CustomColors; public uint Flags;
+        public IntPtr CustomData, Hook, TemplateName;
+    }
 }

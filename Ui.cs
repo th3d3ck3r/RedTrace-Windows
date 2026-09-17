@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using System.Text.Json;
 using Windows.UI;
 
 namespace RedTrace.Windows;
@@ -86,6 +87,43 @@ public static class Ui
         if (box.Text.Length > 400_000) box.Text = box.Text[^250_000..];
         box.Select(box.Text.Length, 0);
     }
+}
+
+public static class Preferences
+{
+    private static readonly string PathName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedTrace", "appearance.json");
+    public static double Opacity { get; set; } = 0.85;
+
+    public static void Load()
+    {
+        try
+        {
+            if (!File.Exists(PathName)) return;
+            var value = JsonSerializer.Deserialize<Appearance>(File.ReadAllText(PathName));
+            if (value is null) return;
+            Opacity = Math.Clamp(value.Opacity, 0.55, 1);
+            Ui.TextBrush.Color = Parse(value.Text, Ui.TextBrush.Color);
+            Ui.RedBrush.Color = Parse(value.Accent, Ui.RedBrush.Color);
+        }
+        catch { }
+    }
+
+    public static void Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
+            File.WriteAllText(PathName, JsonSerializer.Serialize(new Appearance(Opacity, Hex(Ui.TextBrush.Color), Hex(Ui.RedBrush.Color))));
+        }
+        catch { }
+    }
+
+    private static Color Parse(string? value, Color fallback)
+    {
+        try { return Ui.Brush(value ?? "").Color; } catch { return fallback; }
+    }
+    private static string Hex(Color value) => $"#{value.A:X2}{value.R:X2}{value.G:X2}{value.B:X2}";
+    private sealed record Appearance(double Opacity, string Text, string Accent);
 }
 
 public sealed class Sparkline : Canvas

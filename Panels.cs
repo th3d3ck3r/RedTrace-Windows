@@ -64,7 +64,7 @@ public sealed class RunnerPanel : Grid, IDisposable
         var flyout = new MenuFlyout();
         foreach (var kind in Enum.GetValues<ShellKind>())
         {
-            var item = new ToggleMenuFlyoutItem { Text = ShellSession.DisplayName(kind), IsChecked = shell == kind, Tag = kind };
+            var item = new MenuFlyoutItem { Text = $"{(shell == kind ? "✓" : "  ")}  {ShellSession.DisplayName(kind)}", Tag = kind };
             item.Click += (_, _) => { shell = (ShellKind)item.Tag; shellButton.Content = ShellSession.DisplayName(shell) + "  ▾"; session.ChangeShell(shell); shellButton.Flyout = ShellFlyout(); };
             flyout.Items.Add(item);
         }

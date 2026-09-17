@@ -44,11 +44,12 @@ public sealed class MainWindow : Window
         hwnd = WindowNative.GetWindowHandle(this);
         appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(hwnd));
         appWindow.Resize(new SizeInt32(dedicated is null ? 1120 : dedicated == PanelMode.Btop ? 840 : 760, dedicated is null ? 720 : dedicated == PanelMode.Btop ? 580 : 480));
-        appWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "RedTrace.ico"));
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "RedTrace.ico");
+        if (File.Exists(iconPath)) appWindow.SetIcon(iconPath);
         appWindow.Closing += OnClosing;
         if (appWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = true;
 
-        SystemBackdrop = new DesktopAcrylicBackdrop();
+        try { SystemBackdrop = new DesktopAcrylicBackdrop(); } catch { /* Solid glass fallback below. */ }
         ExtendsContentIntoTitleBar = true;
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(43) }); root.RowDefinitions.Add(new RowDefinition());
         root.Background = Ui.Brush("#70030407"); Content = root;

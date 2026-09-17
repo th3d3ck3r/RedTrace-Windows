@@ -19,6 +19,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <Content Include="codex-hook.ps1" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets\RedTrace.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\RedTrace.ico')" />
+    <Content Include="Assets\RedTrace.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\RedTrace.ico')">
+      <Link>RedTrace.ico</Link>
+    </Content>
   </ItemGroup>
 </Project>

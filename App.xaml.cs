@@ -7,12 +7,19 @@ public partial class App : Application
 {
     private MainWindow? mainWindow;
     private NativeTrayIcon? tray;
+    private DispatcherTimer? smokeTimer;
     internal static bool IsExiting { get; private set; }
 
     public App()
     {
+        try { InitializeComponent(); }
+        catch (Exception error)
+        {
+            WriteCrashLog(error, "XAML initialization");
+            MessageBox(IntPtr.Zero, $"RedTrace XAML initialization failed.\n\n{error.Message}\n\n{LogPath}", "RedTrace startup error", 0x10);
+            throw;
+        }
         UnhandledException += (_, e) => WriteCrashLog(e.Exception);
-        InitializeComponent();
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -23,6 +30,7 @@ public partial class App : Application
             mainWindow = new MainWindow();
             mainWindow.Activate();
             try { CreateTray(); } catch (Exception trayError) { WriteCrashLog(trayError, "Tray setup"); }
+            if (args.Arguments.Contains("--smoke-test", StringComparison.OrdinalIgnoreCase)) StartSmokeTest();
         }
         catch (Exception error)
         {
@@ -30,6 +38,18 @@ public partial class App : Application
             MessageBox(IntPtr.Zero, $"RedTrace could not start.\n\n{error.Message}\n\nA log was saved to:\n{LogPath}", "RedTrace startup error", 0x10);
             Exit();
         }
+    }
+
+    private void StartSmokeTest()
+    {
+        var step = 0;
+        smokeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        smokeTimer.Tick += (_, _) =>
+        {
+            if (step++ == 0) mainWindow!.RunSmokeTest();
+            else Quit();
+        };
+        smokeTimer.Start();
     }
 
     private void CreateTray()
@@ -47,6 +67,7 @@ public partial class App : Application
     private void Quit()
     {
         IsExiting = true;
+        smokeTimer?.Stop();
         tray?.Dispose();
         mainWindow?.CloseForReal();
         Exit();

@@ -36,6 +36,7 @@ public sealed class MainWindow : Window
     private bool topmost = true;
     private bool cardRenderPending;
     private int renderedAutoColumns = -1;
+    private PanelMode selectedTab = PanelMode.Watch;
 
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -137,13 +138,41 @@ public sealed class MainWindow : Window
 
     private void RenderTabs()
     {
-        var tabs = new TabView { IsAddTabButtonVisible = false, TabWidthMode = TabViewWidthMode.SizeToContent, Background = new SolidColorBrush(Colors.Transparent) };
-        foreach (var mode in order.Where(visible.Contains))
+        DetachAll();
+        var active = order.Where(visible.Contains).ToArray();
+        if (active.Length == 0)
         {
-            var item = new TabViewItem { Header = mode.ToString().ToUpperInvariant(), IconSource = new FontIconSource { Glyph = Ui.Icon(mode), FontFamily = new FontFamily("Segoe Fluent Icons") }, Content = panels[mode] };
-            tabs.TabItems.Add(item);
+            contentHost.Child = new TextBlock { Text = "No tabs selected", Foreground = Ui.MutedBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            return;
         }
-        contentHost.Child = tabs;
+        if (!visible.Contains(selectedTab)) selectedTab = active[0];
+
+        var host = new Grid();
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        host.RowDefinitions.Add(new RowDefinition());
+        var tabBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(9, 7, 9, 6) };
+        foreach (var mode in active)
+        {
+            var current = mode;
+            var activeTab = current == selectedTab;
+            var button = new Button
+            {
+                Content = $"{Ui.Icon(current)}  {current.ToString().ToUpperInvariant()}",
+                Height = 29,
+                Padding = new Thickness(10, 2, 10, 2),
+                Background = activeTab ? Ui.Brush("#A4251117") : new SolidColorBrush(Colors.Transparent),
+                BorderBrush = activeTab ? Ui.Accent(current) : Ui.HairlineBrush,
+                BorderThickness = new Thickness(activeTab ? 1 : 0),
+                CornerRadius = new CornerRadius(7),
+                Foreground = activeTab ? Ui.Accent(current) : Ui.MutedBrush,
+                FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10
+            };
+            button.Click += (_, _) => { if (selectedTab != current) { selectedTab = current; RenderTabs(); } };
+            tabBar.Children.Add(button);
+        }
+        host.Children.Add(tabBar);
+        var panel = panels[selectedTab]; Grid.SetRow(panel, 1); host.Children.Add(panel);
+        contentHost.Child = host;
     }
 
     private Border Card(PanelMode mode, FrameworkElement panel)
@@ -204,9 +233,17 @@ public sealed class MainWindow : Window
 
     private void DetachAll()
     {
-        if (contentHost.Child is TabView tabs) foreach (var item in tabs.TabItems.OfType<TabViewItem>()) item.Content = null;
         contentHost.Child = null;
         foreach (var panel in panels.Values) Detach(panel);
+    }
+
+    internal void RunSmokeTest()
+    {
+        if (dedicated is not null) return;
+        if (cards) ToggleLayout();
+        selectedTab = PanelMode.Run; RenderTabs();
+        selectedTab = PanelMode.Btop; RenderTabs();
+        ToggleLayout();
     }
 
     private static void Detach(FrameworkElement element)

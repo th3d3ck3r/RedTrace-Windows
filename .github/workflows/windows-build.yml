@@ -22,6 +22,20 @@ jobs:
       - name: Build self-contained Windows app
         shell: pwsh
         run: .\build.ps1
+      - name: Smoke test packaged WinUI app
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:LOCALAPPDATA 'RedTrace\crash.log'
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+          $process = Start-Process '.\publish\RedTrace.exe' -ArgumentList '--smoke-test' -PassThru
+          if (-not $process.WaitForExit(20000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'RedTrace smoke test timed out.'
+          }
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $log) { Get-Content $log }
+            throw "RedTrace smoke test failed with exit code $($process.ExitCode)."
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: RedTrace-Windows-x64

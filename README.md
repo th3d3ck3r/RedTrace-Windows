@@ -1,10 +1,10 @@
 # RedTrace for Windows
 
-Native Windows 11 x64 companion to RedTrace for macOS. All activity remains local.
+Native Windows 11 x64 companion to RedTrace for macOS. All activity remains local. The interface is built with WinUI 3 and the Windows App SDK.
 
-## Visual parity update
+## WinUI 3 rewrite
 
-The Windows shell now closely follows the macOS Cards layout: a compact CARDS pill, 2×2 responsive dashboard, inset near-black panels, thin per-card accent colors, Fluent icon controls, integrated dark command inputs, six system-monitor tiles, and CPU/GPU/RAM status in the title bar. Windows-specific PowerShell, Command Prompt, and WSL behavior is unchanged.
+The window uses native Desktop Acrylic for real frosted-glass transparency, a custom drag region, compact Fluent controls, responsive Cards/Tabs layouts, inset near-black panels, thin per-card accents, six live system-monitor graphs, and CPU/GPU/RAM status in the title bar. Windows automatically falls back to a solid dark surface when transparency is disabled or unavailable.
 
 ## Included
 

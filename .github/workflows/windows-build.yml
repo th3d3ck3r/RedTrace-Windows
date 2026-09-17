@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '**.cs'
+      - '**.xaml'
       - '**.csproj'
       - '**.ps1'
       - 'Assets/**'

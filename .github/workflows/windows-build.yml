@@ -8,6 +8,7 @@ on:
       - "**.csproj"
       - "**.ps1"
       - "Assets/**"
+      - ".github/workflows/**"
 
 jobs:
   build:

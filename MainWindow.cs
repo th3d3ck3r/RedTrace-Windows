@@ -19,6 +19,7 @@ public sealed class MainWindow : Window
     private readonly PanelMode? dedicated;
     private readonly AppWindow appWindow;
     private readonly IntPtr hwnd;
+    internal IntPtr WindowHandle => hwnd;
     private readonly Grid root = new();
     private readonly Border contentHost = new();
     private readonly Dictionary<PanelMode, FrameworkElement> panels = [];

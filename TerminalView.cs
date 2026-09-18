@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,7 +12,7 @@ namespace RedTrace.Windows;
 /// Focusable ConPTY surface. RichEditBox is used only as a renderer; edits go to ConPTY.
 public sealed class TerminalView : RichEditBox, IDisposable
 {
-    readonly StringBuilder pending = new(); readonly DispatcherQueueTimer frame;
+    readonly StringBuilder pending = new(); readonly Microsoft.UI.Dispatching.DispatcherQueueTimer frame;
     Action<byte[]>? sender; bool disposed;
     public TerminalView(Action<byte[]> send)
     {

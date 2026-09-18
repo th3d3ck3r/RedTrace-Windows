@@ -31,7 +31,7 @@ public sealed class WatchPanel : Grid, IDisposable
 
 public sealed class RunnerPanel : Grid, IDisposable
 {
-    private readonly TextBox output = Ui.Terminal();
+    private readonly TerminalView output;
     private readonly TextBox input = Ui.Terminal(false);
     private readonly Button shellButton;
     private readonly ShellSession session;
@@ -41,9 +41,11 @@ public sealed class RunnerPanel : Grid, IDisposable
 
     public RunnerPanel()
     {
-        session = new ShellSession(shell); session.Output += Append;
+        session = new ShellSession(shell);
+        output = new TerminalView(session.SendBytes);
+        session.Output += Append;
         RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        output.Text = "Runner ready. Type a command below and press Enter.\n"; Children.Add(output);
+        output.Append("Runner ready. Click here to type directly, or use the quick command bar below.\r\n"); Children.Add(output);
         var bar = new Grid { ColumnSpacing = 7, Padding = new Thickness(9, 6, 9, 9) };
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); bar.ColumnDefinitions.Add(new ColumnDefinition()); bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         shellButton = new Button { Content = "PowerShell  ▾", MinWidth = 120, Height = 30, Background = Ui.RaisedBrush, BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Foreground = Ui.WhiteBrush, FontSize = 11 };
@@ -54,7 +56,7 @@ public sealed class RunnerPanel : Grid, IDisposable
         var common = Ui.IconButton("", "Common commands", () => { }); common.Flyout = CommandsFlyout(); actions.Children.Add(common);
         actions.Children.Add(Ui.IconButton("", "Previous command", () => History(-1)));
         actions.Children.Add(Ui.IconButton("", "Next command", () => History(1)));
-        actions.Children.Add(Ui.IconButton("", "Clear output", () => output.Text = ""));
+        actions.Children.Add(Ui.IconButton("", "Clear output", output.ClearTerminal));
         actions.Children.Add(Ui.IconButton("", "Stop and restart", session.Start));
         actions.Children.Add(Ui.IconButton("", "Run", Run, Ui.RedBrush));
         Grid.SetColumn(actions, 2); bar.Children.Add(actions); Grid.SetRow(bar, 1); Children.Add(bar);
@@ -94,40 +96,38 @@ public sealed class RunnerPanel : Grid, IDisposable
     private void InputKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e) { if (e.Key == global::Windows.System.VirtualKey.Enter) { Run(); e.Handled = true; } }
     private void Run() { var command = input.Text.Trim(); if (command.Length == 0) return; history.Remove(command); history.Add(command); historyIndex = history.Count; input.Text = ""; session.Send(command); }
     private void History(int delta) { if (history.Count == 0) return; historyIndex = Math.Clamp(historyIndex + delta, 0, history.Count); input.Text = historyIndex == history.Count ? "" : history[historyIndex]; input.Select(input.Text.Length, 0); }
-    private void Append(string value) => DispatcherQueue.TryEnqueue(() => Ui.Append(output, value));
-    public void Dispose() => session.Dispose();
+    private void Append(string value) => DispatcherQueue.TryEnqueue(() => output.Append(value));
+    public void Dispose() { session.Output -= Append; output.Dispose(); session.Dispose(); }
 }
 
 public sealed class CodexPanel : Grid, IDisposable
 {
-    private readonly TextBox output = Ui.Terminal();
-    private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(150) };
-    private readonly string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".redtrace", "codex-events.jsonl");
-    private long offset;
+    // One store backs every ChatGPT panel/window; views never read the JSONL themselves.
+    private static readonly ActivityStore Store = new();
+    private readonly StackPanel rows = new() { Spacing = 6, Padding = new Thickness(10) };
+    private readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private string mode = "Normal"; private bool disposed;
     public CodexPanel()
     {
-        Children.Add(output); output.Text = "Waiting for local Codex command events…\n";
-        timer.Tick += (_, _) => Read(); timer.Start();
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Padding = new Thickness(10, 8, 10, 4) };
+        foreach (var name in new[] { "Minimal", "Normal", "Verbose" }) { var item = new Button { Content = name.ToUpperInvariant(), Tag = name, Height = 27, Padding = new Thickness(9, 1, 9, 1), CornerRadius = new CornerRadius(7), Background = Ui.RaisedBrush, BorderBrush = Ui.HairlineBrush, BorderThickness = new Thickness(1), Foreground = Ui.WhiteBrush, FontSize = 10 }; item.Click += (_, _) => { mode = (string)item.Tag; Render(); }; tabs.Children.Add(item); }
+        Children.Add(tabs); scroll.Content = rows; Grid.SetRow(scroll, 1); Children.Add(scroll);
+        Store.Changed += StoreChanged; Render();
     }
-    private void Read()
+    private void StoreChanged() => DispatcherQueue.TryEnqueue(Render);
+    private void Render()
     {
-        try
-        {
-            if (!File.Exists(path)) return;
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            if (fs.Length < offset) offset = 0; if (fs.Length == offset) return; fs.Position = offset;
-            using var reader = new StreamReader(fs, Encoding.UTF8); var raw = reader.ReadToEnd(); offset = fs.Position;
-            foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var node = JsonNode.Parse(line)?.AsObject(); if (node is null) continue;
-                var origin = node["origin"]?.ToString().ToUpperInvariant() ?? "LOCAL";
-                if (node["phase"]?.ToString() == "start") Ui.Append(output, $"\n[{origin}] {node["cwd"]}\n❯ {node["command"]}\n");
-                else { var body = node["output"]?.ToString(); if (!string.IsNullOrWhiteSpace(body)) Ui.Append(output, body + "\n"); Ui.Append(output, $"[{origin}] ✓ finished\n"); }
-            }
-        }
-        catch { }
+        if (disposed) return; rows.Children.Clear();
+        foreach (var e in Store.Events.TakeLast(500).Reverse()) rows.Children.Add(mode switch { "Minimal" => Minimal(e), "Verbose" => Verbose(e), _ => Normal(e) });
+        if (rows.Children.Count == 0) rows.Children.Add(new TextBlock { Text = "Waiting for ChatGPT tool activity…", Margin = new Thickness(8), Foreground = Ui.MutedBrush, FontFamily = new FontFamily("Cascadia Mono") });
     }
-    public void Dispose() => timer.Stop();
+    private static Border Row(UIElement child, SolidColorBrush accent) => new() { Background = Ui.Brush("#620B0C10"), BorderBrush = accent, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(9, 7, 9, 7), Child = child };
+    private static SolidColorBrush Accent(ActivityEvent e) => e.Category switch { "edit" => Ui.Brush("#FFFF2D91"), "build" => Ui.Brush("#FFFFB000"), "test" => Ui.Brush("#FF8976FF"), "error" => Ui.RedBrush, _ => Ui.Brush("#FF36DDE8") };
+    private static Border Minimal(ActivityEvent e) { var label = string.IsNullOrEmpty(e.Command) ? e.Tool : e.Command; var icon = e.ExitCode is > 0 ? "" : e.Phase == "start" ? "" : ""; return Row(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new FontIcon { Glyph = icon, FontFamily = new FontFamily("Segoe Fluent Icons"), Foreground = Accent(e) }, new TextBlock { Text = $"{e.Category.ToUpperInvariant()}  {label}", Foreground = Ui.WhiteBrush, FontSize = 11 }, new TextBlock { Text = e.Origin.ToUpperInvariant(), Foreground = Ui.MutedBrush, FontSize = 9 } } }, Accent(e)); }
+    private static Border Normal(ActivityEvent e) { var stack = new StackPanel { Spacing = 3 }; stack.Children.Add(Ui.SmallLabel(e.Category.ToUpperInvariant(), Accent(e))); stack.Children.Add(new TextBlock { Text = string.IsNullOrEmpty(e.Target) ? (string.IsNullOrEmpty(e.Command) ? e.Tool : e.Command) : e.Target, Foreground = Ui.WhiteBrush, FontSize = 12, TextWrapping = TextWrapping.Wrap }); if (!string.IsNullOrEmpty(e.Command)) stack.Children.Add(new TextBlock { Text = "› " + e.Command, Foreground = Ui.TextBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, TextWrapping = TextWrapping.Wrap }); stack.Children.Add(new TextBlock { Text = $"{e.Timestamp.ToLocalTime():HH:mm:ss}   {e.Origin.ToUpperInvariant()}" + (e.Duration is null ? "" : $"   {e.Duration.Value.TotalSeconds:0.0}s") + (e.ExitCode is null ? "" : $"   EXIT {e.ExitCode}"), Foreground = Ui.MutedBrush, FontSize = 9 }); return Row(stack, Accent(e)); }
+    private static Border Verbose(ActivityEvent e) => Row(new TextBlock { Text = $"ID {e.Id}\nTIME {e.Timestamp:O}\nPHASE {e.Phase}\nORIGIN {e.Origin}\nTOOL {e.Tool}\nCATEGORY {e.Category}\nCOMMAND {e.Command}\nTARGET {e.Target}\nEXIT {e.ExitCode}\nDURATION {e.Duration}\nOUTPUT\n{e.Output}\nRAW\n{e.Raw}", Foreground = Ui.TextBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, TextWrapping = TextWrapping.Wrap }, Accent(e));
+    public void Dispose() { disposed = true; Store.Changed -= StoreChanged; }
 }
 
 public sealed class BtopPanel : Grid, IDisposable

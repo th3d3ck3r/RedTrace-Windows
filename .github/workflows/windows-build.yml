@@ -45,3 +45,5 @@ jobs:
         with:
           name: RedTrace-Windows-x64
           path: publish\*
+
+# CI rerun after TerminalView compilation fixes.

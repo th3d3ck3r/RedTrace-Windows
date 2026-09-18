@@ -19,62 +19,29 @@ public static class ActivityHub
 
 public sealed class ShellSession : IDisposable
 {
-    private Process? process;
-    private CancellationTokenSource? cancellation;
+    private readonly ConPtySession terminal = new();
     public ShellKind Kind { get; private set; }
     public event Action<string>? Output;
 
-    public ShellSession(ShellKind kind) { Kind = kind; Start(); }
+    public ShellSession(ShellKind kind) { Kind = kind; terminal.Output += bytes => Emit(Encoding.UTF8.GetString(bytes)); Start(); }
 
     public void Start()
     {
         Stop();
         var (file, args) = Kind switch
         {
-            ShellKind.CommandPrompt => ("cmd.exe", "/Q /K"),
+            ShellKind.CommandPrompt => ("cmd.exe", "/Q"),
             ShellKind.Wsl => ("wsl.exe", ""),
-            _ => ("powershell.exe", "-NoLogo -NoProfile -NoExit")
-        };
-        process = new Process
-        {
-            StartInfo = new ProcessStartInfo(file, args)
-            {
-                UseShellExecute = false,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
-            }
+            _ => ("powershell.exe", "-NoLogo -NoProfile")
         };
         try
         {
-            process.Start();
-            cancellation = new CancellationTokenSource();
-            _ = Pump(process.StandardOutput, cancellation.Token);
-            _ = Pump(process.StandardError, cancellation.Token);
+            terminal.Start(file, args);
             Emit($"— {DisplayName(Kind)} session started —\n");
         }
         catch (Exception ex) { Emit($"Could not start {DisplayName(Kind)}: {ex.Message}\n"); }
     }
 
-    private async Task Pump(StreamReader reader, CancellationToken token)
-    {
-        var buffer = new char[2048];
-        try
-        {
-            while (!token.IsCancellationRequested)
-            {
-                var count = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), token);
-                if (count == 0) break;
-                Emit(new string(buffer, 0, count));
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { Emit($"\n{ex.Message}\n"); }
-    }
 
     private void Emit(string value)
     {
@@ -84,17 +51,17 @@ public sealed class ShellSession : IDisposable
 
     public void Send(string command)
     {
-        if (process?.HasExited != false) Start();
-        try { process?.StandardInput.WriteLine(command); process?.StandardInput.Flush(); ActivityHub.Publish(Kind.ToString(), $"> {command}"); }
+        if (!terminal.IsRunning) Start();
+        try { terminal.SendText(command + "\r"); ActivityHub.Publish(Kind.ToString(), $"> {command}"); }
         catch (Exception ex) { Emit($"\nCould not send command: {ex.Message}\n"); }
     }
 
     public void ChangeShell(ShellKind kind) { Kind = kind; Start(); }
+    public void SendBytes(byte[] bytes) => terminal.SendBytes(bytes);
+    public void Resize(int columns, int rows) => terminal.Resize(columns, rows);
     public void Stop()
     {
-        cancellation?.Cancel();
-        if (process is { HasExited: false }) { try { process.Kill(true); } catch { } }
-        process?.Dispose(); process = null; cancellation?.Dispose(); cancellation = null;
+        terminal.Stop();
     }
     public void Dispose() => Stop();
     public static string DisplayName(ShellKind kind) => kind switch { ShellKind.CommandPrompt => "Command Prompt", ShellKind.Wsl => "WSL", _ => "PowerShell" };

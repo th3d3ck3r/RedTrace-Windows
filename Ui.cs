@@ -36,6 +36,7 @@ public static class Ui
     };
 
     public static string Icon(PanelMode mode) => mode switch { PanelMode.Watch => "", PanelMode.Run => "", PanelMode.Codex => "", _ => "" };
+    public static string DisplayName(PanelMode mode) => mode switch { PanelMode.Watch => "WATCH", PanelMode.Run => "RUN", PanelMode.Codex => "CHATGPT", _ => "BTOP" };
 
     public static TextBox Terminal(bool readOnly = true) => new()
     {

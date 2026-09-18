@@ -1,39 +1,73 @@
 # RedTrace for Windows
 
-Native Windows 11 x64 companion to RedTrace for macOS. All activity remains local. The interface is built with WinUI 3 and the Windows App SDK.
+> A local-first command activity viewer, interactive terminal workspace, and live system monitor for Windows.
 
-## WinUI 3 rewrite
+RedTrace brings your shell sessions, ChatGPT/Codex command activity, and system telemetry into one native Windows desktop app. Nothing is sent to a RedTrace service: its logs, hook events, and terminal activity remain on your PC.
 
-The window uses native Desktop Acrylic for real frosted-glass transparency, a custom drag region, compact Fluent controls, responsive Cards/Tabs layouts, inset near-black panels, thin per-card accents, six live system-monitor graphs, and CPU/GPU/RAM status in the title bar. Windows automatically falls back to a solid dark surface when transparency is disabled or unavailable.
+## Highlights
 
-## Included
+- **Interactive terminals** — persistent PowerShell, Command Prompt, WSL, and custom shell sessions powered by ConPTY
+- **Live Watch** — view activity from RedTrace-launched shells, or filter by shell type
+- **ChatGPT activity** — readable local hook events for commands, inputs, results, exit status, and errors
+- **System dashboard** — CPU, best-effort GPU, memory, disk, network, and process telemetry
+- **Flexible workspace** — use focused tabs or a responsive card dashboard; pop out dedicated Watch, Run, ChatGPT, and BTOP windows
+- **Made for the desktop** — dark red-and-black theme, rounded surfaces, Acrylic where Windows supports it, tray mode, opacity, fonts/colors, and an always-on-top option
+- **Command help** — shell-specific Common Commands menus insert a command for review; choosing one never runs it
 
-- Tabs and responsive movable/resizable Cards layouts for WATCH, RUN, CODEX, and BTOP
-- Selectable WATCH source: all RedTrace shells, PowerShell, Command Prompt, or WSL
-- Independent PowerShell, Command Prompt, and WSL Runner sessions
-- Shell-specific Common Commands menus that insert commands for review
-- Dedicated windows and multiple simultaneous Runner sessions
-- Local Codex hook event view
-- CPU, best-effort GPU, RAM, disk, network, process, and system-tray monitoring
-- Background operation, tray popup, always-on-top, persistent opacity, fonts, and colors
+## Install
 
-External Windows terminal monitoring is intentionally excluded. WATCH displays sessions launched by RedTrace.
+### Download a release
 
-## Build and install
-
-Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), open PowerShell in this folder, and run:
+Choose the latest **Windows x64** build from [Releases](../../releases), extract it, and run `install.ps1` from PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\install.ps1
 ```
 
-The self-contained x64 app is installed under `%LOCALAPPDATA%\RedTrace` and added to the Start menu. For Codex events, review the two RedTrace entries in `/hooks`, approve them, and begin a new local Codex session.
+The installer puts RedTrace in `%LOCALAPPDATA%\RedTrace` and creates a Start-menu entry.
 
-Alternatively, put these files in a GitHub repository and run **Build RedTrace Windows** under Actions. Download the `RedTrace-Windows-x64` artifact when it finishes.
+### Build from source
 
-## Notes
+Requirements:
 
-- WSL requires the optional Windows Subsystem for Linux feature.
-- GPU usage is best-effort because counter availability varies by driver.
-- Some full-screen console programs require deeper ConPTY emulation; ordinary commands, prompts, stdout, and stderr are captured.
+- Windows 11 x64
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- Windows App SDK dependencies restored by the project
+
+```powershell
+dotnet restore
+dotnet build -c Release
+.\install.ps1
+```
+
+GitHub Actions also builds the project. Download the `RedTrace-Windows-x64` artifact from a successful **Build RedTrace Windows** run.
+
+## Using RedTrace
+
+1. Open **RUN**, select PowerShell, CMD, WSL, or a custom shell, then start a session.
+2. Use **WATCH** to follow all RedTrace shell sessions or a single shell source.
+3. Switch between **Tabs** for a focused workspace and **Cards** for a live dashboard.
+4. Open the **ChatGPT** tab to view hook-delivered activity.
+5. Use the tray icon to keep RedTrace available after closing ordinary windows.
+
+## ChatGPT/Codex activity
+
+Open `/hooks` in a local Codex session, approve the RedTrace hook entries, then begin a new local session. RedTrace records supported tool activity locally and distinguishes command lifecycle events, target/input details, output, exit status, and errors when supplied.
+
+RedTrace cannot passively inspect an unrelated cloud conversation. It can show the events delivered to its local hooks.
+
+## Privacy and limitations
+
+- RedTrace monitors the sessions it launches; it intentionally does **not** attach to arbitrary existing Windows Terminal windows.
+- Full-screen or graphical terminal programs may require terminal emulation beyond the current ConPTY renderer. Standard interactive prompts and normal command output are supported.
+- GPU readings are best-effort because performance counter availability depends on the driver.
+- Review commands before running them. Shell sessions run with your Windows account permissions.
+
+## Uninstall
+
+Remove the installed folder and Start-menu entry, then remove the RedTrace hook entries through `/hooks` if you no longer want ChatGPT activity capture. Local logs can be removed separately if desired.
+
+## Release notes
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete release history.

@@ -17,7 +17,7 @@
     <AssemblyName>RedTrace</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
     <Content Include="codex-hook.ps1" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\RedTrace.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\RedTrace.ico')">
       <Link>RedTrace.ico</Link>

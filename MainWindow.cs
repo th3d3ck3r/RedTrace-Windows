@@ -58,7 +58,7 @@ public sealed class MainWindow : Window
     public MainWindow(PanelMode? dedicated = null)
     {
         this.dedicated = dedicated;
-        Title = dedicated is null ? "RedTrace" : $"RedTrace {dedicated}";
+        Title = dedicated is null ? "RedTrace" : $"RedTrace {Ui.DisplayName(dedicated.Value)}";
         hwnd = WindowNative.GetWindowHandle(this);
         var roundedCorners = 2; _ = DwmSetWindowAttribute(hwnd, 33, ref roundedCorners, sizeof(int));
         appWindow = AppWindow.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(hwnd));
@@ -97,7 +97,7 @@ public sealed class MainWindow : Window
     {
         var bar = new Grid { Background = new SolidColorBrush(Colors.Transparent), Padding = new Thickness(10, 5, 142, 5) };
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); bar.ColumnDefinitions.Add(new ColumnDefinition()); bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        layout = new Button { Content = dedicated is null ? "▦  CARDS  ▾" : $"{Ui.Icon(dedicated.Value)}  {dedicated.ToString()!.ToUpperInvariant()}", Height = 29, MinWidth = 96, Padding = new Thickness(10, 2, 10, 2), Background = Ui.Brush("#91201419"), BorderBrush = Ui.Brush("#805B232C"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Foreground = Ui.RedBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+        layout = new Button { Content = dedicated is null ? "▦  CARDS  ▾" : $"{Ui.Icon(dedicated.Value)}  {Ui.DisplayName(dedicated.Value)}", Height = 29, MinWidth = 96, Padding = new Thickness(10, 2, 10, 2), Background = Ui.Brush("#91201419"), BorderBrush = Ui.Brush("#805B232C"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Foreground = Ui.RedBrush, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
         if (dedicated is null) layout.Flyout = CardsFlyout(); bar.Children.Add(layout);
         stats.Foreground = Ui.MutedBrush; stats.FontFamily = new FontFamily("Cascadia Mono"); stats.FontSize = 9; stats.HorizontalAlignment = HorizontalAlignment.Right; stats.VerticalAlignment = VerticalAlignment.Center; stats.Margin = new Thickness(10, 0, 10, 0); Grid.SetColumn(stats, 1); bar.Children.Add(stats);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -194,7 +194,7 @@ public sealed class MainWindow : Window
             var activeTab = current == selectedTab;
             var button = new Button
             {
-                Content = $"{Ui.Icon(current)}  {current.ToString().ToUpperInvariant()}",
+                Content = $"{Ui.Icon(current)}  {Ui.DisplayName(current)}",
                 Height = 29,
                 Padding = new Thickness(10, 2, 10, 2),
                 Background = activeTab ? Ui.Brush("#A4251117") : new SolidColorBrush(Colors.Transparent),
@@ -215,7 +215,7 @@ public sealed class MainWindow : Window
         var header = new Grid { Height = 33, Padding = new Thickness(9, 0, 6, 0), Background = Ui.Brush("#92101116"), CanDrag = true };
         header.ColumnDefinitions.Add(new ColumnDefinition()); header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, VerticalAlignment = VerticalAlignment.Center };
-        title.Children.Add(new FontIcon { Glyph = Ui.Icon(mode), FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 11, Foreground = accent }); title.Children.Add(Ui.SmallLabel(mode.ToString().ToUpperInvariant(), accent)); header.Children.Add(title);
+        title.Children.Add(new FontIcon { Glyph = Ui.Icon(mode), FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 11, Foreground = accent }); title.Children.Add(Ui.SmallLabel(Ui.DisplayName(mode), accent)); header.Children.Add(title);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         controls.Children.Add(Ui.IconButton("", $"Open dedicated {mode} window", () => new MainWindow(mode).Activate(), accent));
         controls.Children.Add(new FontIcon { Glyph = "", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 11, Foreground = accent, Margin = new Thickness(7, 0, 5, 0) }); Grid.SetColumn(controls, 1); header.Children.Add(controls);
@@ -244,7 +244,7 @@ public sealed class MainWindow : Window
         flyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var mode in Enum.GetValues<PanelMode>())
         {
-            var item = new MenuFlyoutItem { Text = $"{(visible.Contains(mode) ? "✓" : "  ")}  {mode.ToString().ToUpperInvariant()}", Tag = mode };
+            var item = new MenuFlyoutItem { Text = $"{(visible.Contains(mode) ? "✓" : "  ")}  {Ui.DisplayName(mode)}", Tag = mode };
             item.Click += (_, _) => { var value = (PanelMode)item.Tag; if (!visible.Add(value)) visible.Remove(value); ApplyLayout(); layoutButton.Flyout = CardsFlyout(); };
             flyout.Items.Add(item);
         }
@@ -256,7 +256,7 @@ public sealed class MainWindow : Window
     private MenuFlyout CreateNewWindowFlyout()
     {
         var flyout = Ui.Menu();
-        foreach (var mode in Enum.GetValues<PanelMode>()) { var item = new MenuFlyoutItem { Text = $"New {mode} window", Tag = mode }; item.Click += (_, _) => new MainWindow((PanelMode)item.Tag).Activate(); flyout.Items.Add(item); }
+        foreach (var mode in Enum.GetValues<PanelMode>()) { var item = new MenuFlyoutItem { Text = $"New {Ui.DisplayName(mode)} window", Tag = mode }; item.Click += (_, _) => new MainWindow((PanelMode)item.Tag).Activate(); flyout.Items.Add(item); }
         return flyout;
     }
 

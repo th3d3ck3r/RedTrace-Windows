@@ -2,18 +2,37 @@
 
 Native Windows 11 x64 companion to RedTrace for macOS. All activity remains local. The interface is built with WinUI 3 and the Windows App SDK.
 
+## 2.7 — Interactive terminal and ChatGPT activity
+
+- Runner sessions use Windows ConPTY for PowerShell, Command Prompt, and WSL instead of redirected stdout/stderr streams.
+- The Runner surface accepts direct keyboard input and paste, while retaining the quick-command bar, history, shell selector, restart, clear, and Common Commands controls.
+- The former CODEX panel is now **CHATGPT**. Its Minimal, Normal, and Verbose modes share one bounded local activity history.
+- Hooks retain observable non-command tools such as reads, edits, writes, and searches. Descriptions are classified locally; RedTrace never claims to reveal hidden reasoning.
+- All activity stays in `~/.redtrace/codex-events.jsonl`. Local/remote labels are based only on supplied execution metadata.
+
+## Changelog
+
+### 2.7.0
+
+- Added ConPTY-backed PowerShell, CMD, and WSL sessions.
+- Added direct terminal input, paste handling, and a frame-batched terminal renderer.
+- Added normalized ChatGPT activity correlation, deterministic categories, bounded retention, and Minimal/Normal/Verbose views.
+- Renamed all user-facing Codex labels to ChatGPT while retaining compatible internal event filenames.
+- Expanded hook records with target, serialized tool input, exit code, and error fields; non-shell events are no longer discarded.
+- Added native Windows Actions build/publish validation and artifact verification.
+
 ## WinUI 3 rewrite
 
 The window uses native Desktop Acrylic for real frosted-glass transparency, a custom drag region, compact Fluent controls, responsive Cards/Tabs layouts, inset near-black panels, thin per-card accents, six live system-monitor graphs, and CPU/GPU/RAM status in the title bar. Windows automatically falls back to a solid dark surface when transparency is disabled or unavailable.
 
 ## Included
 
-- Tabs and responsive movable/resizable Cards layouts for WATCH, RUN, CODEX, and BTOP
+- Tabs and responsive movable/resizable Cards layouts for WATCH, RUN, CHATGPT, and BTOP
 - Selectable WATCH source: all RedTrace shells, PowerShell, Command Prompt, or WSL
 - Independent PowerShell, Command Prompt, and WSL Runner sessions
 - Shell-specific Common Commands menus that insert commands for review
 - Dedicated windows and multiple simultaneous Runner sessions
-- Local Codex hook event view
+- Local ChatGPT tool-activity feed with Minimal, Normal, and Verbose modes
 - CPU, best-effort GPU, RAM, disk, network, process, and system-tray monitoring
 - Background operation, tray popup, always-on-top, persistent opacity, fonts, and colors
 

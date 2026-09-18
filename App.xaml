@@ -5,7 +5,9 @@
     RequestedTheme="Dark">
     <Application.Resources>
         <ResourceDictionary>
-            <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
                     <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="Transparent" />

@@ -18,7 +18,7 @@ public sealed class TerminalView : RichEditBox, IDisposable
     {
         sender = send; IsReadOnly = true; IsSpellCheckEnabled = false; IsTextPredictionEnabled = false;
         FontFamily = new FontFamily("Cascadia Mono"); FontSize = 12; Foreground = Ui.TextBrush;
-        Background = new SolidColorBrush(global::Windows.UI.Colors.Transparent); BorderThickness = new Thickness(0);
+        Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent); BorderThickness = new Thickness(0);
         Padding = new Thickness(12, 10, 12, 10); HorizontalAlignment = HorizontalAlignment.Stretch; VerticalAlignment = VerticalAlignment.Stretch;
         frame = DispatcherQueue.CreateTimer(); frame.Interval = TimeSpan.FromMilliseconds(16); frame.Tick += (_, _) => Flush();
         KeyDown += OnKeyDown; CharacterReceived += OnCharacter; Paste += OnPaste; SizeChanged += (_, _) => ResizeTerminal();
